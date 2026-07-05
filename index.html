@@ -26,10 +26,20 @@
 
   <div id="retentionModal" class="modal-overlay">
     <div class="bg-white rounded-lg p-6 max-w-sm w-full mx-4 shadow-xl">
-      <h2 class="text-xl font-bold text-orange-600 mb-2">No te vayas!</h2>
-      <p class="text-gray-600 mb-4">Tenemos una oferta especial para ti. Usa este cupon y obten un descuento.</p>
-      <div class="bg-orange-100 text-orange-800 text-center py-3 rounded text-2xl font-bold tracking-widest mb-4" id="couponCode">SAVE10</div>
-      <button class="w-full bg-orange-600 text-white py-2 rounded hover:bg-orange-700" onclick="closeRetention()">Usar oferta</button>
+      <h2 class="text-xl font-bold text-orange-600 mb-2" id="retentionTitle">No te vayas!</h2>
+      <p class="text-gray-600 mb-4" id="retentionMessage">Tenemos una oferta especial para ti.</p>
+      <div id="retentionContent"></div>
+      <button class="w-full bg-orange-600 text-white py-2 rounded hover:bg-orange-700 mt-3" onclick="acceptRetention()">Aceptar oferta</button>
+      <button class="w-full text-gray-500 py-2 mt-1" onclick="closeRetention()">No, gracias</button>
+    </div>
+  </div>
+
+  <div id="abandonModal" class="modal-overlay">
+    <div class="bg-white rounded-lg p-6 max-w-sm w-full mx-4 shadow-xl">
+      <h2 class="text-xl font-bold text-gray-800 mb-2">Abandonar carrito</h2>
+      <p class="text-gray-500 text-sm mb-4">Cual es el motivo?</p>
+      <div id="abandonReasons" class="space-y-2"></div>
+      <button class="w-full text-gray-500 py-2 mt-2" onclick="closeAbandon()">Seguir comprando</button>
     </div>
   </div>
 
@@ -51,7 +61,39 @@ const productos = [
   { id: "prod_003", nombre: "Monitor 27 4K", precio: 450, categoria: "computacion", imagen: "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=500" },
   { id: "prod_004", nombre: "Mouse Inalambrico", precio: 45, categoria: "perifericos", imagen: "https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=500" },
   { id: "prod_005", nombre: "Auriculares Bluetooth", precio: 95, categoria: "audio", imagen: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500" },
-  { id: "prod_006", nombre: "Webcam HD", precio: 70, categoria: "perifericos", imagen: "https://images.unsplash.com/photo-1587826080692-f439cd0b70da?w=500" },
+  { id: "prod_006", nombre: "Webcam HD 1080p", precio: 70, categoria: "perifericos", imagen: "https://images.unsplash.com/photo-1587826080692-f439cd0b70da?w=500" },
+  { id: "prod_007", nombre: "Tablet 10 Pulgadas", precio: 350, categoria: "computacion", imagen: "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=500" },
+  { id: "prod_008", nombre: "Smartwatch Deportivo", precio: 200, categoria: "wearables", imagen: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500" },
+  { id: "prod_009", nombre: "Silla Ergonomicas", precio: 320, categoria: "muebles", imagen: "https://images.unsplash.com/photo-1580480055273-228ff5388ef8?w=500" },
+  { id: "prod_010", nombre: "Escritorio Electrico", precio: 580, categoria: "muebles", imagen: "https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?w=500" },
+  { id: "prod_011", nombre: "Camara Web 4K", precio: 130, categoria: "perifericos", imagen: "https://images.unsplash.com/photo-1585386959984-a4155224a1ad?w=500" },
+  { id: "prod_012", nombre: "Hub USB-C 7 puertos", precio: 40, categoria: "perifericos", imagen: "https://images.unsplash.com/photo-1619953942547-233eab5a70d6?w=500" },
+  { id: "prod_013", nombre: "Microfono Condensador", precio: 110, categoria: "audio", imagen: "https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=500" },
+  { id: "prod_014", nombre: "Bocina Portatil", precio: 60, categoria: "audio", imagen: "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=500" },
+  { id: "prod_015", nombre: "Mousepad XL", precio: 25, categoria: "perifericos", imagen: "https://images.unsplash.com/photo-1595225476474-87563907a212?w=500" },
+  { id: "prod_016", nombre: "Laptop Ultraligera", precio: 950, categoria: "computacion", imagen: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=500" },
+  { id: "prod_017", nombre: "Disco SSD 1TB", precio: 110, categoria: "computacion", imagen: "https://images.unsplash.com/photo-1600720646248-1b344f5a2024?w=500" },
+  { id: "prod_018", nombre: "Memoria RAM 32GB", precio: 90, categoria: "computacion", imagen: "https://images.unsplash.com/photo-1562976540-1502c2145186?w=500" },
+  { id: "prod_019", nombre: "Cargador Inalambrico", precio: 35, categoria: "accesorios", imagen: "https://images.unsplash.com/photo-1583394838336-acd977736f90?w=500" },
+  { id: "prod_020", nombre: "Soporte para Laptop", precio: 50, categoria: "accesorios", imagen: "https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=500" },
+];
+
+const tiendas = [
+  "Mall del Centro - Local 102",
+  "Plaza Norte - Nivel 2",
+  "Parque Sur - Local 55",
+  "Avenida Principal 1234",
+  "Centro Comercial Este - Local 89",
+];
+
+const razonesAbandono = [
+  "Costo de envio muy alto",
+  "Encontre mejor precio en otro lado",
+  "No estoy listo para comprar aun",
+  "Solo estaba mirando",
+  "El total es muy alto",
+  "Prefiero recoger en tienda pero no hay cerca",
+  "Me preocupa el tiempo de entrega",
 ];
 
 let carrito = [];
@@ -61,9 +103,33 @@ localStorage.setItem("userId", userId);
 let currentProduct = null;
 let pageLoadTime = Date.now();
 let currentPage = "catalog";
+let deliveryMode = "shipping";
+let shippingType = "standard";
+let selectedStore = tiendas[0];
+let retentionData = null;
 
 function getTimeOnPage() {
   return Math.floor((Date.now() - pageLoadTime) / 1000);
+}
+
+function getShippingCost() {
+  if (deliveryMode === "store") return 0;
+  const totalItems = carrito.reduce((s, p) => s + p.cantidad, 0);
+  const base = totalItems * 4;
+  return shippingType === "express" ? base * 3 : base;
+}
+
+function getShippingDays() {
+  if (deliveryMode === "store") return 0;
+  return shippingType === "express" ? 1 : 4;
+}
+
+function getSubtotal() {
+  return carrito.reduce((s, p) => s + p.precio * p.cantidad, 0);
+}
+
+function getTotalItems() {
+  return carrito.reduce((s, p) => s + p.cantidad, 0);
 }
 
 function makeEvent(eventType, extra = {}) {
@@ -88,7 +154,7 @@ async function sendEvent(event) {
     if (res.ok) {
       const data = await res.json();
       if (data && data.trigger_retention) {
-        showRetention(data.coupon_code || "SAVE10");
+        showRetention(data);
       }
       return data;
     }
@@ -97,13 +163,41 @@ async function sendEvent(event) {
   }
 }
 
-function showRetention(code) {
-  document.getElementById("couponCode").textContent = code || "SAVE10";
+function showRetention(data) {
+  retentionData = data;
+  if (data.retention_type === "shipping_discount") {
+    document.getElementById("retentionTitle").textContent = "Envio gratis para ti!";
+    document.getElementById("retentionMessage").textContent = "No te vayas. Te ofrecemos envio gratuito en esta compra.";
+    document.getElementById("retentionContent").innerHTML = `<div class="bg-green-100 text-green-800 text-center py-3 rounded text-lg">Envio gratuito aplicado</div>`;
+  } else if (data.retention_type === "express_upgrade") {
+    document.getElementById("retentionTitle").textContent = "Upgrade a Express gratis!";
+    document.getElementById("retentionMessage").textContent = "Lleva tus productos en 1 dia sin costo adicional de envio express.";
+    document.getElementById("retentionContent").innerHTML = `<div class="bg-blue-100 text-blue-800 text-center py-3 rounded text-lg">Express sin recargo</div>`;
+  } else {
+    document.getElementById("retentionTitle").textContent = "No te vayas!";
+    document.getElementById("retentionMessage").textContent = "Tenemos un cupon especial para ti.";
+    document.getElementById("retentionContent").innerHTML = `<div class="bg-orange-100 text-orange-800 text-center py-3 rounded text-2xl font-bold tracking-widest" id="couponCode">${data.coupon_code || "SAVE10"}</div>`;
+  }
   document.getElementById("retentionModal").classList.add("active");
 }
 
 function closeRetention() {
   document.getElementById("retentionModal").classList.remove("active");
+  retentionData = null;
+}
+
+function acceptRetention() {
+  if (retentionData && retentionData.retention_type === "shipping_discount") {
+    shippingType = "standard";
+    deliveryMode = "shipping";
+    renderCart();
+  } else if (retentionData && retentionData.retention_type === "express_upgrade") {
+    shippingType = "express";
+    deliveryMode = "shipping";
+    renderCart();
+  }
+  document.getElementById("retentionModal").classList.remove("active");
+  retentionData = null;
 }
 
 function showDetail(prod) {
@@ -135,19 +229,18 @@ function addToCart(prod) {
   } else {
     carrito.push({ ...prod, cantidad: 1 });
   }
-  const totalItems = carrito.reduce((s, p) => s + p.cantidad, 0);
-  const totalValue = carrito.reduce((s, p) => s + p.precio * p.cantidad, 0);
+  const totalItems = getTotalItems();
+  const subtotal = getSubtotal();
   document.getElementById("cartSummary").textContent = `Carrito (${totalItems})`;
-  sendEvent(makeEvent("add_to_cart", { product_id: prod.id, category: prod.categoria, price: prod.precio, cart_value: totalValue, cart_items: totalItems }));
-  goToCart();
+  sendEvent(makeEvent("add_to_cart", { product_id: prod.id, category: prod.categoria, price: prod.precio, cart_value: subtotal, cart_items: totalItems }));
 }
 
 function removeFromCart(id) {
   carrito = carrito.filter((p) => p.id !== id);
-  const totalItems = carrito.reduce((s, p) => s + p.cantidad, 0);
-  const totalValue = carrito.reduce((s, p) => s + p.precio * p.cantidad, 0);
+  const totalItems = getTotalItems();
+  const subtotal = getSubtotal();
   document.getElementById("cartSummary").textContent = `Carrito (${totalItems})`;
-  sendEvent(makeEvent("remove_from_cart", { product_id: id, cart_value: totalValue, cart_items: totalItems }));
+  sendEvent(makeEvent("remove_from_cart", { product_id: id, cart_value: subtotal, cart_items: totalItems }));
   renderCart();
 }
 
@@ -174,29 +267,101 @@ function renderCart() {
     document.getElementById("pageContent").innerHTML = `<div class="text-center py-20 text-gray-500"><p class="text-xl mb-4">Tu carrito esta vacio</p><button class="bg-blue-600 text-white px-4 py-2 rounded" onclick="goToCatalog()">Ir a tienda</button></div>`;
     return;
   }
-  const totalItems = carrito.reduce((s, p) => s + p.cantidad, 0);
-  const totalValue = carrito.reduce((s, p) => s + p.precio * p.cantidad, 0);
+  const totalItems = getTotalItems();
+  const subtotal = getSubtotal();
+  const shipping = getShippingCost();
+  const days = getShippingDays();
+  const total = subtotal + shipping;
+  sendEvent(makeEvent("page_view", { page: "cart", cart_value: subtotal, cart_items: totalItems, delivery_mode: deliveryMode, shipping_cost: shipping, shipping_type: deliveryMode === "shipping" ? shippingType : "none" }));
   document.getElementById("pageContent").innerHTML = `
     <h2 class="text-xl font-bold mb-4">Tu Carrito (${totalItems} productos)</h2>
-    <div class="space-y-3">
-      ${carrito.map((p) => `
-        <div class="bg-white rounded-lg shadow p-4 flex justify-between items-center">
-          <div class="flex items-center gap-3">
-            <img src="${p.imagen}" class="w-16 h-16 object-cover rounded">
-            <div>
-              <p class="font-semibold">${p.nombre}</p>
-              <p class="text-sm text-gray-500">$${p.precio} x ${p.cantidad}</p>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div>
+        ${carrito.map((p) => `
+          <div class="bg-white rounded-lg shadow p-3 flex justify-between items-center mb-2">
+            <div class="flex items-center gap-3">
+              <img src="${p.imagen}" class="w-14 h-14 object-cover rounded">
+              <div>
+                <p class="font-semibold text-sm">${p.nombre}</p>
+                <p class="text-xs text-gray-500">$${p.precio} x ${p.cantidad}</p>
+              </div>
             </div>
+            <button class="text-red-500 text-xs" onclick="removeFromCart('${p.id}')">Quitar</button>
           </div>
-          <button class="text-red-500 text-sm" onclick="removeFromCart('${p.id}')">Quitar</button>
+        `).join("")}
+      </div>
+      <div>
+        <div class="bg-white rounded-lg shadow p-4 mb-3">
+          <p class="font-semibold text-sm mb-3">Tipo de entrega</p>
+          <label class="flex items-center gap-2 p-2 ${deliveryMode === 'shipping' ? 'bg-blue-50 rounded' : ''} cursor-pointer">
+            <input type="radio" name="delivery" value="shipping" ${deliveryMode === 'shipping' ? 'checked' : ''} onchange="setDelivery('shipping')">
+            <span class="text-sm">Envio a domicilio</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 ${deliveryMode === 'store' ? 'bg-blue-50 rounded' : ''} cursor-pointer">
+            <input type="radio" name="delivery" value="store" ${deliveryMode === 'store' ? 'checked' : ''} onchange="setDelivery('store')">
+            <span class="text-sm">Recojo en tienda</span>
+          </label>
         </div>
-      `).join("")}
+        ${deliveryMode === "store" ? `
+          <div class="bg-white rounded-lg shadow p-4 mb-3">
+            <p class="font-semibold text-sm mb-2">Selecciona tienda</p>
+            <select class="w-full border rounded p-2 text-sm" onchange="selectedStore=this.value">
+              ${tiendas.map((t) => `<option value="${t}" ${t === selectedStore ? "selected" : ""}>${t}</option>`).join("")}
+            </select>
+            <p class="text-xs text-green-600 mt-2">Sin costo de envio. Recojo en 24 horas.</p>
+          </div>
+        ` : `
+          <div class="bg-white rounded-lg shadow p-4 mb-3">
+            <p class="font-semibold text-sm mb-2">Tipo de envio</p>
+            <label class="flex items-center gap-2 p-2 ${shippingType === 'standard' ? 'bg-blue-50 rounded' : ''} cursor-pointer">
+              <input type="radio" name="shipping" value="standard" ${shippingType === 'standard' ? 'checked' : ''} onchange="setShipping('standard')">
+              <div class="text-sm">
+                <span>Estandar</span>
+                <span class="text-gray-400 ml-2">$${(getTotalItems() * 4).toFixed(2)} - 4 dias habiles</span>
+              </div>
+            </label>
+            <label class="flex items-center gap-2 p-2 ${shippingType === 'express' ? 'bg-blue-50 rounded' : ''} cursor-pointer">
+              <input type="radio" name="shipping" value="express" ${shippingType === 'express' ? 'checked' : ''} onchange="setShipping('express')">
+              <div class="text-sm">
+                <span>Express</span>
+                <span class="text-gray-400 ml-2">$${(getTotalItems() * 12).toFixed(2)} - 1 dia habil</span>
+              </div>
+            </label>
+          </div>
+        `}
+        <div class="bg-white rounded-lg shadow p-4">
+          <div class="flex justify-between text-sm mb-1">
+            <span>Subtotal (${totalItems} prod.)</span>
+            <span>$${subtotal.toFixed(2)}</span>
+          </div>
+          <div class="flex justify-between text-sm mb-1">
+            <span>Envio${deliveryMode === "store" ? " (recogida)" : ""}</span>
+            <span>${deliveryMode === "store" ? "Gratis" : "$" + shipping.toFixed(2)}</span>
+          </div>
+          ${deliveryMode === "shipping" ? `<p class="text-xs text-gray-400 mb-1">Llega en ${days} dias habiles</p>` : ""}
+          <hr class="my-2">
+          <div class="flex justify-between font-bold text-lg">
+            <span>Total</span>
+            <span>$${total.toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="text-right mt-6">
-      <p class="text-xl font-bold">Total: $${totalValue.toFixed(2)}</p>
-      <button class="bg-green-600 text-white px-6 py-2 rounded mt-2 hover:bg-green-700" onclick="goToCheckout()">Ir a checkout</button>
+    <div class="flex justify-between mt-4">
+      <button class="bg-red-100 text-red-600 px-4 py-2 rounded hover:bg-red-200" onclick="showAbandon()">Abandonar carrito</button>
+      <button class="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700" onclick="goToCheckout()">Ir a checkout</button>
     </div>
   `;
+}
+
+function setDelivery(mode) {
+  deliveryMode = mode;
+  renderCart();
+}
+
+function setShipping(type) {
+  shippingType = type;
+  renderCart();
 }
 
 function goToCart() {
@@ -209,40 +374,82 @@ function goToCatalog() {
 
 function goToCheckout() {
   currentPage = "checkout";
-  const totalItems = carrito.reduce((s, p) => s + p.cantidad, 0);
-  const totalValue = carrito.reduce((s, p) => s + p.precio * p.cantidad, 0);
-  sendEvent(makeEvent("start_checkout", { cart_value: totalValue, cart_items: totalItems }));
+  const totalItems = getTotalItems();
+  const subtotal = getSubtotal();
+  const shipping = getShippingCost();
+  const days = getShippingDays();
+  const total = subtotal + shipping;
+  sendEvent(makeEvent("start_checkout", { cart_value: subtotal, cart_items: totalItems, delivery_mode: deliveryMode, shipping_cost: shipping, shipping_type: deliveryMode === "shipping" ? shippingType : "none" }));
   document.getElementById("pageContent").innerHTML = `
     <div class="max-w-md mx-auto">
-      <h2 class="text-xl font-bold mb-4">Checkout</h2>
+      <h2 class="text-xl font-bold mb-4">Confirmar compra</h2>
       <div class="bg-white rounded-lg shadow p-4 mb-4">
-        <p class="text-gray-600 mb-2">Total a pagar: <span class="font-bold text-xl">$${totalValue.toFixed(2)}</span></p>
-        <p class="text-sm text-gray-400">${totalItems} producto(s)</p>
+        <div class="flex justify-between text-sm mb-1">
+          <span>Productos (${totalItems})</span>
+          <span>$${subtotal.toFixed(2)}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1">
+          <span>Entrega</span>
+          <span>${deliveryMode === "store" ? "Recojo en tienda (" + selectedStore + ")" : (shippingType === "express" ? "Express (1 dia)" : "Estandar (4 dias)")}</span>
+        </div>
+        <div class="flex justify-between text-sm mb-1">
+          <span>Costo de envio</span>
+          <span>${deliveryMode === "store" ? "Gratis" : "$" + shipping.toFixed(2)}</span>
+        </div>
+        <hr class="my-2">
+        <div class="flex justify-between font-bold text-lg">
+          <span>Total</span>
+          <span>$${total.toFixed(2)}</span>
+        </div>
       </div>
-      <form id="checkoutForm" onsubmit="confirmCheckout(event)">
-        <input type="text" placeholder="Nombre completo" class="w-full border rounded p-2 mb-2" required>
-        <input type="email" placeholder="Email" class="w-full border rounded p-2 mb-2" required>
-        <input type="text" placeholder="Direccion" class="w-full border rounded p-2 mb-2" required>
-        <button type="submit" class="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700">Confirmar compra</button>
-      </form>
+      <button class="w-full bg-green-600 text-white py-3 rounded hover:bg-green-700" onclick="confirmCheckout()">Confirmar compra</button>
+      <button class="w-full text-gray-500 py-2 mt-2" onclick="goToCart()">Volver al carrito</button>
     </div>
   `;
 }
 
-function confirmCheckout(e) {
-  e.preventDefault();
-  const totalItems = carrito.reduce((s, p) => s + p.cantidad, 0);
-  const totalValue = carrito.reduce((s, p) => s + p.precio * p.cantidad, 0);
-  sendEvent(makeEvent("purchase", { cart_value: totalValue, cart_items: totalItems }));
+function confirmCheckout() {
+  const totalItems = getTotalItems();
+  const subtotal = getSubtotal();
+  const shipping = getShippingCost();
+  sendEvent(makeEvent("purchase", { cart_value: subtotal, cart_items: totalItems, delivery_mode: deliveryMode, shipping_cost: shipping }));
   carrito = [];
+  deliveryMode = "shipping";
+  shippingType = "standard";
   document.getElementById("cartSummary").textContent = "Carrito (0)";
   document.getElementById("pageContent").innerHTML = `<div class="text-center py-20"><p class="text-2xl text-green-600 font-bold mb-2">Compra exitosa!</p><p class="text-gray-500">Gracias por tu compra</p><button class="bg-blue-600 text-white px-4 py-2 rounded mt-4" onclick="goToCatalog()">Seguir comprando</button></div>`;
 }
 
+function showAbandon() {
+  document.getElementById("abandonReasons").innerHTML = razonesAbandono.map((r) => `
+    <button class="w-full text-left bg-gray-100 hover:bg-gray-200 rounded p-2 text-sm" onclick="abandonCart('${r}')">${r}</button>
+  `).join("");
+  document.getElementById("abandonModal").classList.add("active");
+}
+
+function closeAbandon() {
+  document.getElementById("abandonModal").classList.remove("active");
+}
+
+function abandonCart(reason) {
+  const totalItems = getTotalItems();
+  const subtotal = getSubtotal();
+  const shipping = getShippingCost();
+  sendEvent(makeEvent("abandon", { cart_value: subtotal, cart_items: totalItems, delivery_mode: deliveryMode, shipping_cost: shipping, shipping_type: deliveryMode === "shipping" ? shippingType : "none", abandon_reason: reason }));
+  carrito = [];
+  deliveryMode = "shipping";
+  shippingType = "standard";
+  document.getElementById("cartSummary").textContent = "Carrito (0)";
+  closeAbandon();
+  document.getElementById("pageContent").innerHTML = `<div class="text-center py-20 text-gray-500"><p class="text-xl mb-4">Carrito abandonado</p><p class="text-sm text-gray-400 mb-4">Motivo: ${reason}</p><button class="bg-blue-600 text-white px-4 py-2 rounded" onclick="goToCatalog()">Volver a tienda</button></div>`;
+}
+
 window.addEventListener("beforeunload", () => {
-  const totalItems = carrito.reduce((s, p) => s + p.cantidad, 0);
-  const totalValue = carrito.reduce((s, p) => s + p.precio * p.cantidad, 0);
-  navigator.sendBeacon(API_URL, JSON.stringify(makeEvent("abandon", { cart_value: totalValue, cart_items: totalItems })));
+  const totalItems = getTotalItems();
+  if (totalItems === 0) return;
+  const subtotal = getSubtotal();
+  const shipping = getShippingCost();
+  navigator.sendBeacon(API_URL, JSON.stringify(makeEvent("abandon", { cart_value: subtotal, cart_items: totalItems, delivery_mode: deliveryMode, shipping_cost: shipping, abandon_reason: "cerro ventana" })));
 });
 
 renderCatalogo();
