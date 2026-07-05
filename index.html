@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clickstream Store</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;z-index:50}
+.modal-overlay.active{display:flex}
+.product-detail-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;z-index:40}
+.product-detail-overlay.active{display:flex}
+</style>
+</head>
+<body class="bg-gray-50">
+<div id="app" class="max-w-6xl mx-auto p-4">
+  <header class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">TechStore</h1>
+    <div class="flex items-center gap-4">
+      <span id="cartSummary" class="text-sm text-gray-600 cursor-pointer hover:text-blue-600" onclick="goToCart()">Carrito (0)</span>
+      <button class="text-sm bg-blue-600 text-white px-3 py-1 rounded" onclick="goToCatalog()">Tienda</button>
+    </div>
+  </header>
+
+  <div id="pageContent"></div>
+
+  <div id="retentionModal" class="modal-overlay">
+    <div class="bg-white rounded-lg p-6 max-w-sm w-full mx-4 shadow-xl">
+      <h2 class="text-xl font-bold text-orange-600 mb-2">No te vayas!</h2>
+      <p class="text-gray-600 mb-4">Tenemos una oferta especial para ti. Usa este cupon y obten un descuento.</p>
+      <div class="bg-orange-100 text-orange-800 text-center py-3 rounded text-2xl font-bold tracking-widest mb-4" id="couponCode">SAVE10</div>
+      <button class="w-full bg-orange-600 text-white py-2 rounded hover:bg-orange-700" onclick="closeRetention()">Usar oferta</button>
+    </div>
+  </div>
+
+  <div id="productDetail" class="product-detail-overlay">
+    <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+      <div id="detailContent"></div>
+      <button class="w-full bg-blue-600 text-white py-2 rounded mt-4 hover:bg-blue-700" onclick="addFromDetail()">Agregar al carrito</button>
+      <button class="w-full text-gray-500 py-2 mt-2" onclick="closeDetail()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_URL = "http://localhost:4566/restapis/ID_API/STAGE/events";
+
+const productos = [
+  { id: "prod_001", nombre: "Laptop Gamer X", precio: 1200, categoria: "computacion", imagen: "https://images.unsplash.com/photo-1603302576837-37561b2e2302?w=500" },
+  { id: "prod_002", nombre: "Teclado Mecanico RGB", precio: 85, categoria: "perifericos", imagen: "https://images.unsplash.com/photo-1618384887929-16ec33fab9ef?w=500" },
+  { id: "prod_003", nombre: "Monitor 27 4K", precio: 450, categoria: "computacion", imagen: "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=500" },
+  { id: "prod_004", nombre: "Mouse Inalambrico", precio: 45, categoria: "perifericos", imagen: "https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=500" },
+  { id: "prod_005", nombre: "Auriculares Bluetooth", precio: 95, categoria: "audio", imagen: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500" },
+  { id: "prod_006", nombre: "Webcam HD", precio: 70, categoria: "perifericos", imagen: "https://images.unsplash.com/photo-1587826080692-f439cd0b70da?w=500" },
+];
+
+let carrito = [];
+let sessionId = crypto.randomUUID();
+let userId = localStorage.getItem("userId") || crypto.randomUUID();
+localStorage.setItem("userId", userId);
+let currentProduct = null;
+let pageLoadTime = Date.now();
+let currentPage = "catalog";
+
+function getTimeOnPage() {
+  return Math.floor((Date.now() - pageLoadTime) / 1000);
+}
+
+function makeEvent(eventType, extra = {}) {
+  return {
+    user_id: userId,
+    session_id: sessionId,
+    event_type: eventType,
+    timestamp: new Date().toISOString(),
+    device: "desktop",
+    time_on_page: getTimeOnPage(),
+    ...extra,
+  };
+}
+
+async function sendEvent(event) {
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(event),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.trigger_retention) {
+        showRetention(data.coupon_code || "SAVE10");
+      }
+      return data;
+    }
+  } catch (e) {
+    console.log("Event sent (offline mode):", event.event_type);
+  }
+}
+
+function showRetention(code) {
+  document.getElementById("couponCode").textContent = code || "SAVE10";
+  document.getElementById("retentionModal").classList.add("active");
+}
+
+function closeRetention() {
+  document.getElementById("retentionModal").classList.remove("active");
+}
+
+function showDetail(prod) {
+  currentProduct = prod;
+  document.getElementById("detailContent").innerHTML = `
+    <img src="${prod.imagen}" class="w-full h-48 object-cover rounded mb-3">
+    <h3 class="text-lg font-bold">${prod.nombre}</h3>
+    <p class="text-gray-600">Categoria: ${prod.categoria}</p>
+    <p class="text-2xl font-bold text-blue-600 mt-2">$${prod.precio}</p>
+  `;
+  document.getElementById("productDetail").classList.add("active");
+  sendEvent(makeEvent("view_product", { product_id: prod.id, category: prod.categoria, price: prod.precio }));
+}
+
+function closeDetail() {
+  document.getElementById("productDetail").classList.remove("active");
+  currentProduct = null;
+}
+
+function addFromDetail() {
+  if (currentProduct) addToCart(currentProduct);
+  closeDetail();
+}
+
+function addToCart(prod) {
+  const existente = carrito.find((p) => p.id === prod.id);
+  if (existente) {
+    existente.cantidad++;
+  } else {
+    carrito.push({ ...prod, cantidad: 1 });
+  }
+  const totalItems = carrito.reduce((s, p) => s + p.cantidad, 0);
+  const totalValue = carrito.reduce((s, p) => s + p.precio * p.cantidad, 0);
+  document.getElementById("cartSummary").textContent = `Carrito (${totalItems})`;
+  sendEvent(makeEvent("add_to_cart", { product_id: prod.id, category: prod.categoria, price: prod.precio, cart_value: totalValue, cart_items: totalItems }));
+  goToCart();
+}
+
+function removeFromCart(id) {
+  carrito = carrito.filter((p) => p.id !== id);
+  const totalItems = carrito.reduce((s, p) => s + p.cantidad, 0);
+  const totalValue = carrito.reduce((s, p) => s + p.precio * p.cantidad, 0);
+  document.getElementById("cartSummary").textContent = `Carrito (${totalItems})`;
+  sendEvent(makeEvent("remove_from_cart", { product_id: id, cart_value: totalValue, cart_items: totalItems }));
+  renderCart();
+}
+
+function renderCatalogo() {
+  currentPage = "catalog";
+  document.getElementById("pageContent").innerHTML = `
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      ${productos.map((p) => `
+        <div class="bg-white rounded-lg shadow p-4 cursor-pointer hover:shadow-lg" onclick="showDetail(productos.find(x=>x.id==='${p.id}'))">
+          <img src="${p.imagen}" class="w-full h-40 object-cover rounded mb-2">
+          <h3 class="font-semibold">${p.nombre}</h3>
+          <p class="text-blue-600 font-bold">$${p.precio}</p>
+          <span class="text-xs text-gray-400">${p.categoria}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+  sendEvent(makeEvent("page_view", { page: "catalog" }));
+}
+
+function renderCart() {
+  currentPage = "cart";
+  if (carrito.length === 0) {
+    document.getElementById("pageContent").innerHTML = `<div class="text-center py-20 text-gray-500"><p class="text-xl mb-4">Tu carrito esta vacio</p><button class="bg-blue-600 text-white px-4 py-2 rounded" onclick="goToCatalog()">Ir a tienda</button></div>`;
+    return;
+  }
+  const totalItems = carrito.reduce((s, p) => s + p.cantidad, 0);
+  const totalValue = carrito.reduce((s, p) => s + p.precio * p.cantidad, 0);
+  document.getElementById("pageContent").innerHTML = `
+    <h2 class="text-xl font-bold mb-4">Tu Carrito (${totalItems} productos)</h2>
+    <div class="space-y-3">
+      ${carrito.map((p) => `
+        <div class="bg-white rounded-lg shadow p-4 flex justify-between items-center">
+          <div class="flex items-center gap-3">
+            <img src="${p.imagen}" class="w-16 h-16 object-cover rounded">
+            <div>
+              <p class="font-semibold">${p.nombre}</p>
+              <p class="text-sm text-gray-500">$${p.precio} x ${p.cantidad}</p>
+            </div>
+          </div>
+          <button class="text-red-500 text-sm" onclick="removeFromCart('${p.id}')">Quitar</button>
+        </div>
+      `).join("")}
+    </div>
+    <div class="text-right mt-6">
+      <p class="text-xl font-bold">Total: $${totalValue.toFixed(2)}</p>
+      <button class="bg-green-600 text-white px-6 py-2 rounded mt-2 hover:bg-green-700" onclick="goToCheckout()">Ir a checkout</button>
+    </div>
+  `;
+}
+
+function goToCart() {
+  renderCart();
+}
+
+function goToCatalog() {
+  renderCatalogo();
+}
+
+function goToCheckout() {
+  currentPage = "checkout";
+  const totalItems = carrito.reduce((s, p) => s + p.cantidad, 0);
+  const totalValue = carrito.reduce((s, p) => s + p.precio * p.cantidad, 0);
+  sendEvent(makeEvent("start_checkout", { cart_value: totalValue, cart_items: totalItems }));
+  document.getElementById("pageContent").innerHTML = `
+    <div class="max-w-md mx-auto">
+      <h2 class="text-xl font-bold mb-4">Checkout</h2>
+      <div class="bg-white rounded-lg shadow p-4 mb-4">
+        <p class="text-gray-600 mb-2">Total a pagar: <span class="font-bold text-xl">$${totalValue.toFixed(2)}</span></p>
+        <p class="text-sm text-gray-400">${totalItems} producto(s)</p>
+      </div>
+      <form id="checkoutForm" onsubmit="confirmCheckout(event)">
+        <input type="text" placeholder="Nombre completo" class="w-full border rounded p-2 mb-2" required>
+        <input type="email" placeholder="Email" class="w-full border rounded p-2 mb-2" required>
+        <input type="text" placeholder="Direccion" class="w-full border rounded p-2 mb-2" required>
+        <button type="submit" class="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700">Confirmar compra</button>
+      </form>
+    </div>
+  `;
+}
+
+function confirmCheckout(e) {
+  e.preventDefault();
+  const totalItems = carrito.reduce((s, p) => s + p.cantidad, 0);
+  const totalValue = carrito.reduce((s, p) => s + p.precio * p.cantidad, 0);
+  sendEvent(makeEvent("purchase", { cart_value: totalValue, cart_items: totalItems }));
+  carrito = [];
+  document.getElementById("cartSummary").textContent = "Carrito (0)";
+  document.getElementById("pageContent").innerHTML = `<div class="text-center py-20"><p class="text-2xl text-green-600 font-bold mb-2">Compra exitosa!</p><p class="text-gray-500">Gracias por tu compra</p><button class="bg-blue-600 text-white px-4 py-2 rounded mt-4" onclick="goToCatalog()">Seguir comprando</button></div>`;
+}
+
+window.addEventListener("beforeunload", () => {
+  const totalItems = carrito.reduce((s, p) => s + p.cantidad, 0);
+  const totalValue = carrito.reduce((s, p) => s + p.precio * p.cantidad, 0);
+  navigator.sendBeacon(API_URL, JSON.stringify(makeEvent("abandon", { cart_value: totalValue, cart_items: totalItems })));
+});
+
+renderCatalogo();
+</script>
+</body>
+</html>
