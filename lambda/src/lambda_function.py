@@ -19,22 +19,24 @@ AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
 AWS_ENDPOINT_URL = os.environ.get('AWS_ENDPOINT_URL', 'http://localhost:4566')
 ECS_ENDPOINT = os.environ.get('ECS_ENDPOINT', 'http://localhost:8080')
 
-boto_config = Config(
+DEFAULT_BOTO_CONFIG = Config(
     region_name=AWS_REGION,
     retries={'max_attempts': 3, 'mode': 'standard'},
     s3={'addressing_style': 'path'}
 )
 
-s3 = boto3.client('s3', endpoint_url=AWS_ENDPOINT_URL, config=Config(
-    region_name=AWS_REGION,
-    retries={'max_attempts': 3, 'mode': 'standard'},
-    s3={'addressing_style': 'path'}
-))
-dynamodb = boto3.resource('dynamodb', endpoint_url=AWS_ENDPOINT_URL, config=Config(
-    region_name=AWS_REGION,
-    retries={'max_attempts': 3, 'mode': 'standard'}
-))
-table = dynamodb.Table(os.environ.get('DYNAMODB_TABLE', 'clickstream-sessions'))
+s3 = boto3.client('s3', endpoint_url=AWS_ENDPOINT_URL, config=DEFAULT_BOTO_CONFIG)
+
+
+def connect_dynamodb() -> object:
+    resource = boto3.resource('dynamodb', endpoint_url=AWS_ENDPOINT_URL, config=Config(
+        region_name=AWS_REGION,
+        retries={'max_attempts': 3, 'mode': 'standard'}
+    ))
+    return resource.Table(DYNAMODB_TABLE)
+
+
+table = connect_dynamodb()
 
 REQUIRED_FIELDS = [
     'event_type', 'session_id', 'user_id', 'timestamp'
@@ -126,24 +128,35 @@ def to_dynamo_value(value):
     return value
 
 
+SESSION_CACHE_TTL_SECONDS = 3600
+
+DYNAMODB_FIELDS = [
+    'device', 'delivery_mode', 'shipping_type', 'shipping_cost',
+    'abandon_reason', 'payment_method', 'product_id', 'category', 'price',
+    'cart_value', 'product_count', 'product_quantities',
+    'shipping_option_selected', 'mouse_click_count', 'mouse_x', 'mouse_y',
+    'page', 'user_id', 'event_type'
+]
+
+
 def store_session_state(event_data: Dict[str, Any], s3_key: str) -> None:
     dt = datetime.fromisoformat(event_data['timestamp'].replace('Z', '+00:00'))
     item = {
         'session_id': event_data['session_id'],
         'timestamp': Decimal(str(dt.timestamp())),
-        'user_id': event_data['user_id'],
-        'event_type': event_data['event_type'],
-        'cart_value': to_dynamo_value(event_data.get('cart_value', 0)),
-        'product_count': to_dynamo_value(event_data.get('product_count', 0)),
-        'product_quantities': to_dynamo_value(event_data.get('product_quantities', {})),
-        'shipping_option_selected': event_data.get('shipping_option_selected', 'standard'),
-        'mouse_click_count': to_dynamo_value(event_data.get('mouse_click_count', 0)),
-        'mouse_x': to_dynamo_value(event_data.get('mouse_x', 0)),
-        'mouse_y': to_dynamo_value(event_data.get('mouse_y', 0)),
-        'page': event_data.get('page', 'cart'),
         's3_key': s3_key,
-        'ttl': int(datetime.now(timezone.utc).timestamp()) + 60
+        'ttl': int(datetime.now(timezone.utc).timestamp()) + SESSION_CACHE_TTL_SECONDS
     }
+    for field in DYNAMODB_FIELDS:
+        if field in event_data:
+            val = event_data[field]
+            if isinstance(val, float):
+                val = Decimal(str(val))
+            elif isinstance(val, dict):
+                val = to_dynamo_value(val)
+            elif isinstance(val, (list, tuple)):
+                val = to_dynamo_value(val)
+            item[field] = val
     table.put_item(Item=item)
 
 

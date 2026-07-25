@@ -214,6 +214,7 @@ def test_lambda_handler_dynamodb_item_structure(mock_table, mock_s3, lambda_even
     assert item['session_id'] == 'test-session-123'
     assert item['user_id'] == 'test-user-456'
     assert 'ttl' in item
+    assert item['ttl'] > 0
     assert item['event_type'] == 'heartbeat'
     assert item['cart_value'] == 1200.50
     assert item['product_count'] == 2
@@ -248,3 +249,198 @@ def test_lambda_handler_response_structure(mock_table, mock_s3, lambda_event, co
     assert 'trigger_retention' in body
     assert isinstance(body['trigger_retention'], bool)
     assert isinstance(body['abandon_probability'], float)
+
+
+@patch.dict(os.environ, {
+    'S3_BUCKET': 'test-bucket',
+    'DYNAMODB_TABLE': 'test-table',
+    'AWS_ENDPOINT_URL': 'http://localhost:4566'
+})
+@patch('lambda_function.s3')
+@patch('lambda_function.table')
+def test_dynamodb_item_ttl_expiry_value(mock_table, mock_s3, context):
+    mock_table.put_item.return_value = {}
+    mock_s3.put_object.return_value = {}
+
+    base = {
+        'event_type': 'heartbeat',
+        'session_id': 'ttl-test-session',
+        'user_id': 'ttl-test-user',
+        'timestamp': '2026-07-24T18:30:00.000Z',
+        'cart_value': 100.0, 'product_count': 1,
+        'product_quantities': {'prod_001': 1},
+        'shipping_option_selected': 'standard',
+        'mouse_click_count': 0, 'mouse_x': 100, 'mouse_y': 200,
+        'page': 'cart'
+    }
+    event = {'body': json.dumps(base)}
+    response = lambda_handler(event, context)
+    assert response['statusCode'] == 200
+
+    call_args = mock_table.put_item.call_args
+    item = call_args[1]['Item']
+    assert item['ttl'] > 0
+
+    from datetime import datetime, timezone
+    expected_min = int(datetime.now(timezone.utc).timestamp()) + 3590
+    assert item['ttl'] >= expected_min, f"ttl={item['ttl']} < expected_min={expected_min}"
+
+
+@patch.dict(os.environ, {
+    'S3_BUCKET': 'test-bucket',
+    'DYNAMODB_TABLE': 'test-table',
+    'AWS_ENDPOINT_URL': 'http://localhost:4566'
+})
+@patch('lambda_function.s3')
+@patch('lambda_function.table')
+def test_dynamodb_stores_device_field(mock_table, mock_s3, context):
+    mock_table.put_item.return_value = {}
+    mock_s3.put_object.return_value = {}
+
+    base = {
+        'event_type': 'heartbeat',
+        'session_id': 'device-test-session',
+        'user_id': 'device-test-user',
+        'timestamp': '2026-07-24T18:30:00.000Z',
+        'cart_value': 100.0, 'product_count': 1,
+        'product_quantities': {'prod_001': 1},
+        'shipping_option_selected': 'standard',
+        'mouse_click_count': 0, 'mouse_x': 100, 'mouse_y': 200,
+        'page': 'cart',
+        'device': 'mobile',
+        'delivery_mode': 'shipping',
+        'shipping_type': 'express',
+        'shipping_cost': 15.0
+    }
+    event = {'body': json.dumps(base)}
+    response = lambda_handler(event, context)
+    assert response['statusCode'] == 200
+
+    call_args = mock_table.put_item.call_args
+    item = call_args[1]['Item']
+    assert item['device'] == 'mobile'
+    assert item['delivery_mode'] == 'shipping'
+    assert item['shipping_type'] == 'express'
+    assert item['shipping_cost'] == 15.0
+
+
+@patch.dict(os.environ, {
+    'S3_BUCKET': 'test-bucket',
+    'DYNAMODB_TABLE': 'test-table',
+    'AWS_ENDPOINT_URL': 'http://localhost:4566'
+})
+@patch('lambda_function.s3')
+@patch('lambda_function.table')
+def test_dynamodb_stores_event_type_specific_fields(mock_table, mock_s3, context):
+    mock_table.put_item.return_value = {}
+    mock_s3.put_object.return_value = {}
+
+    event_types = {
+        'purchase': {'payment_method': 'paypal', 'cart_value': 200.0, 'product_count': 2,
+                     'product_quantities': {'prod_001': 2}, 'shipping_option_selected': 'express',
+                     'mouse_click_count': 10},
+        'abandon': {'abandon_reason': 'precio muy alto', 'cart_value': 150.0, 'product_count': 1,
+                    'product_quantities': {'prod_001': 1}, 'shipping_option_selected': 'standard',
+                    'mouse_click_count': 5},
+        'add_to_cart': {'product_id': 'prod_002', 'category': 'perifericos', 'price': 85.0,
+                        'cart_value': 185.0, 'product_count': 2,
+                        'product_quantities': {'prod_001': 1, 'prod_002': 1},
+                        'shipping_option_selected': 'standard', 'mouse_click_count': 3}
+    }
+
+    for event_type, extra in event_types.items():
+        mock_table.reset_mock()
+        mock_s3.reset_mock()
+
+        event = {
+            'body': json.dumps({
+                'event_type': event_type,
+                'session_id': f'session-{event_type}',
+                'user_id': f'user-{event_type}',
+                'timestamp': '2026-07-24T18:30:00.000Z',
+                **extra
+            })
+        }
+        response = lambda_handler(event, context)
+        assert response['statusCode'] == 200
+
+        call_args = mock_table.put_item.call_args
+        item = call_args[1]['Item']
+        assert item['event_type'] == event_type
+
+        if event_type == 'purchase':
+            assert item['payment_method'] == 'paypal'
+        elif event_type == 'abandon':
+            assert item['abandon_reason'] == 'precio muy alto'
+        elif event_type == 'add_to_cart':
+            assert item['product_id'] == 'prod_002'
+            assert item['category'] == 'perifericos'
+            assert item['price'] == 85.0
+
+
+@patch.dict(os.environ, {
+    'S3_BUCKET': 'test-bucket',
+    'DYNAMODB_TABLE': 'test-table',
+    'AWS_ENDPOINT_URL': 'http://localhost:4566'
+})
+@patch('lambda_function.s3')
+@patch('lambda_function.table')
+def test_dynamodb_does_not_store_absent_optional_fields(mock_table, mock_s3, context):
+    mock_table.put_item.return_value = {}
+    mock_s3.put_object.return_value = {}
+
+    event = {
+        'body': json.dumps({
+            'event_type': 'heartbeat',
+            'session_id': 'minimal-session',
+            'user_id': 'minimal-user',
+            'timestamp': '2026-07-24T18:30:00.000Z',
+            'cart_value': 0, 'product_count': 0,
+            'product_quantities': {},
+            'shipping_option_selected': 'standard',
+            'mouse_click_count': 0, 'mouse_x': 0, 'mouse_y': 0,
+            'page': 'cart'
+        })
+    }
+    response = lambda_handler(event, context)
+    assert response['statusCode'] == 200
+
+    call_args = mock_table.put_item.call_args
+    item = call_args[1]['Item']
+    assert 'device' not in item
+    assert 'delivery_mode' not in item
+    assert 'shipping_type' not in item
+    assert 'shipping_cost' not in item
+    assert 'abandon_reason' not in item
+    assert 'payment_method' not in item
+
+
+@patch.dict(os.environ, {
+    'S3_BUCKET': 'test-bucket',
+    'DYNAMODB_TABLE': 'test-table',
+    'AWS_ENDPOINT_URL': 'http://localhost:4566'
+})
+@patch('lambda_function.s3')
+@patch('lambda_function.table')
+def test_dynamodb_put_item_called_for_each_event(mock_table, mock_s3, context):
+    mock_table.put_item.return_value = {}
+    mock_s3.put_object.return_value = {}
+
+    for i in range(3):
+        event = {
+            'body': json.dumps({
+                'event_type': 'heartbeat',
+                'session_id': 'multi-event-session',
+                'user_id': 'multi-event-user',
+                'timestamp': f'2026-07-24T18:30:0{i}.000Z',
+                'cart_value': 100.0, 'product_count': 1,
+                'product_quantities': {'prod_001': 1},
+                'shipping_option_selected': 'standard',
+                'mouse_click_count': i, 'mouse_x': i * 10, 'mouse_y': i * 20,
+                'page': 'cart'
+            })
+        }
+        response = lambda_handler(event, context)
+        assert response['statusCode'] == 200
+
+    assert mock_table.put_item.call_count == 3

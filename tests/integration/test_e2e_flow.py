@@ -188,3 +188,104 @@ class TestIntegrationFloci:
         assert raw['event_type'] == 'heartbeat'
         assert raw['cart_value'] == 250.0
         assert raw['page'] == 'checkout'
+
+    def test_dynamodb_stores_all_fields_from_event(self):
+        event = make_event(
+            page='checkout',
+            cart_value=250.0,
+            product_count=3,
+            product_quantities={'prod_001': 2, 'prod_002': 1},
+            shipping_option_selected='express',
+            device='mobile',
+            delivery_mode='shipping',
+            shipping_type='express',
+            shipping_cost=15.0
+        )
+        api_post(event)
+        time.sleep(0.5)
+        result = table.query(
+            KeyConditionExpression='session_id = :sid',
+            ExpressionAttributeValues={':sid': event['session_id']}
+        )
+        assert len(result['Items']) >= 1
+        item = result['Items'][0]
+        assert item['device'] == 'mobile'
+        assert item['delivery_mode'] == 'shipping'
+        assert item['shipping_type'] == 'express'
+        assert float(item['shipping_cost']) == 15.0
+        assert item['page'] == 'checkout'
+        assert float(item['cart_value']) == 250.0
+        assert int(item['product_count']) == 3
+
+    def test_dynamodb_event_type_specific_fields(self):
+        event = make_event(
+            event_type='purchase',
+            cart_value=300.0,
+            product_count=2,
+            product_quantities={'prod_001': 1, 'prod_002': 1},
+            payment_method='credit_card'
+        )
+        api_post(event)
+        time.sleep(0.5)
+        result = table.query(
+            KeyConditionExpression='session_id = :sid',
+            ExpressionAttributeValues={':sid': event['session_id']}
+        )
+        assert len(result['Items']) >= 1
+        item = result['Items'][0]
+        assert item['payment_method'] == 'credit_card'
+
+        event2 = make_event(
+            event_type='abandon',
+            cart_value=150.0,
+            product_count=1,
+            product_quantities={'prod_001': 1},
+            abandon_reason='Costo de envio muy alto'
+        )
+        api_post(event2)
+        time.sleep(0.5)
+        result2 = table.query(
+            KeyConditionExpression='session_id = :sid',
+            ExpressionAttributeValues={':sid': event2['session_id']}
+        )
+        assert len(result2['Items']) >= 1
+        item2 = result2['Items'][0]
+        assert item2['abandon_reason'] == 'Costo de envio muy alto'
+
+    def test_dynamodb_ttl_is_future_timestamp(self):
+        event = make_event()
+        api_post(event)
+        time.sleep(0.5)
+        result = table.query(
+            KeyConditionExpression='session_id = :sid',
+            ExpressionAttributeValues={':sid': event['session_id']}
+        )
+        assert len(result['Items']) >= 1
+        item = result['Items'][0]
+        assert 'ttl' in item
+        assert int(item['ttl']) > int(time.time()) + 3000
+
+    def test_dynamodb_multiple_heartbeats_per_session(self):
+        session_id = f"multi-session-{uuid.uuid4().hex[:8]}"
+        user_id = f"multi-user-{uuid.uuid4().hex[:8]}"
+
+        for i in range(3):
+            e = make_event(
+                session_id=session_id,
+                user_id=user_id,
+                mouse_x=100 + i * 50,
+                mouse_y=200,
+                cart_value=100 + i * 50,
+                timestamp=datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.') + f"{i:03d}Z"
+            )
+            api_post(e)
+            time.sleep(0.3)
+
+        time.sleep(0.5)
+        result = table.query(
+            KeyConditionExpression='session_id = :sid',
+            ExpressionAttributeValues={':sid': session_id}
+        )
+        assert len(result['Items']) == 3
+        timestamps = sorted([float(i['timestamp']) for i in result['Items']])
+        assert timestamps[0] < timestamps[1] < timestamps[2]
