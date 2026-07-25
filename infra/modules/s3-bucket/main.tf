@@ -19,10 +19,3 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "clickstream" {
   }
 }
 
-output "bucket_id" {
-  value = aws_s3_bucket.clickstream.id
-}
-
-output "bucket_arn" {
-  value = aws_s3_bucket.clickstream.arn
-}

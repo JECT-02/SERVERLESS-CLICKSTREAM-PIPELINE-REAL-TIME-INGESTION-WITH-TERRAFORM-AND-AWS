@@ -46,3 +46,13 @@ variable "api_gateway_execution_arn" {
   type        = string
   default     = ""
 }
+
+variable "vpc_subnet_ids" {
+  type        = list(string)
+  default     = []
+}
+
+variable "vpc_security_group_ids" {
+  type        = list(string)
+  default     = []
+}

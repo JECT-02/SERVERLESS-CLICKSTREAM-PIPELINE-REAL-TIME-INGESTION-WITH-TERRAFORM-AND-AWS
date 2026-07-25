@@ -10,9 +10,11 @@ provider "aws" {
     apigateway    = var.floci_endpoint
     ecs           = var.floci_endpoint
     ecr           = var.floci_endpoint
+    ec2           = var.floci_endpoint
     iam           = var.floci_endpoint
     logs          = var.floci_endpoint
     cloudformation = var.floci_endpoint
+    sts           = var.floci_endpoint
   }
   skip_credentials_validation = true
   skip_metadata_api_check     = true
@@ -64,6 +66,11 @@ module "iam_roles" {
   ecs_cluster_arn      = ""
 }
 
+module "vpc" {
+  source = "../../modules/vpc"
+  tags   = local.common_tags
+}
+
 module "ecs_cluster" {
   source       = "../../modules/ecs-fargate/cluster"
   cluster_name = var.ecs_cluster_name
@@ -86,6 +93,35 @@ module "ecs_task_definition" {
   task_execution_role = module.iam_roles.ecs_task_execution_role_arn
 }
 
+module "alb" {
+  count              = var.enable_alb ? 1 : 0
+  source             = "../../modules/ecs-fargate/alb"
+  alb_name           = var.alb_name
+  vpc_id             = module.vpc.vpc_id
+  subnet_ids         = module.vpc.public_subnet_ids
+  security_group_ids = [module.vpc.alb_security_group_id]
+  target_group_name  = var.target_group_name
+  container_port     = var.ecs_container_port
+  tags               = local.common_tags
+}
+
+module "ecs_service" {
+  count                = var.enable_alb ? 1 : 0
+  source               = "../../modules/ecs-fargate/service"
+  cluster_name         = module.ecs_cluster.cluster_name
+  service_name         = var.ecs_service_name
+  task_definition_arn  = module.ecs_task_definition.task_definition_arn
+  desired_count        = var.ecs_desired_count
+  alb_target_group_arn = var.enable_alb ? module.alb[0].target_group_arn : ""
+  subnet_ids           = module.vpc.private_subnet_ids
+  security_group_ids   = [module.vpc.ecs_tasks_security_group_id]
+  environment          = var.environment
+}
+
+locals {
+  ecs_endpoint = var.enable_alb ? "http://${module.alb[0].alb_dns_name}" : "http://localhost:8080"
+}
+
 module "lambda_function" {
   source                    = "../../modules/lambda-function"
   function_name             = var.lambda_function_name
@@ -93,11 +129,15 @@ module "lambda_function" {
   runtime                   = var.lambda_runtime
   timeout                   = var.lambda_timeout
   memory_size               = var.lambda_memory
-  environment_variables     = var.lambda_env_vars
+  environment_variables     = merge(var.lambda_env_vars, {
+    ECS_ENDPOINT = local.ecs_endpoint
+  })
   role_arn                  = module.iam_roles.lambda_execution_role_arn
   source_code_filename      = var.lambda_source_code_filename
   source_code_hash          = local.lambda_source_code_hash
   api_gateway_execution_arn = module.api_gateway.execution_arn
+  vpc_subnet_ids            = var.enable_alb ? module.vpc.private_subnet_ids : []
+  vpc_security_group_ids    = var.enable_alb ? [module.vpc.ecs_tasks_security_group_id] : []
 }
 
 module "api_gateway" {
@@ -133,4 +173,16 @@ output "dynamodb_table_name" {
 
 output "lambda_function_name" {
   value = module.lambda_function.function_name
+}
+
+output "vpc_id" {
+  value = module.vpc.vpc_id
+}
+
+output "alb_dns_name" {
+  value = var.enable_alb ? module.alb[0].alb_dns_name : ""
+}
+
+output "ecs_inference_endpoint" {
+  value = var.enable_alb ? "http://${module.alb[0].alb_dns_name}/predict" : "http://localhost:8080/predict"
 }

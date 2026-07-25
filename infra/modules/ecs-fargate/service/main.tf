@@ -23,5 +23,5 @@ output "service_name" {
 }
 
 output "service_arn" {
-  value = aws_ecs_service.inference.arn
+  value = aws_ecs_service.inference.id
 }

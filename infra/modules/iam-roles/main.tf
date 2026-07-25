@@ -49,6 +49,25 @@ resource "aws_iam_role_policy" "lambda_logs" {
   })
 }
 
+resource "aws_iam_role_policy" "lambda_vpc_eni" {
+  name = "${var.lambda_function_name}-vpc-eni"
+  role = aws_iam_role.lambda_execution.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ec2:CreateNetworkInterface",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DeleteNetworkInterface",
+        "ec2:AssignPrivateIpAddresses",
+        "ec2:UnassignPrivateIpAddresses"
+      ]
+      Resource = "*"
+    }]
+  })
+}
+
 resource "aws_iam_role" "ecs_task_execution" {
   name = "${var.ecs_task_name}-execution-role"
   assume_role_policy = jsonencode({

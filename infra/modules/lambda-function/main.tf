@@ -11,6 +11,14 @@ resource "aws_lambda_function" "ingestion" {
   environment {
     variables = var.environment_variables
   }
+
+  dynamic "vpc_config" {
+    for_each = length(var.vpc_subnet_ids) > 0 ? [1] : []
+    content {
+      subnet_ids         = var.vpc_subnet_ids
+      security_group_ids = var.vpc_security_group_ids
+    }
+  }
 }
 
 resource "aws_lambda_permission" "api_gateway_invoke" {
