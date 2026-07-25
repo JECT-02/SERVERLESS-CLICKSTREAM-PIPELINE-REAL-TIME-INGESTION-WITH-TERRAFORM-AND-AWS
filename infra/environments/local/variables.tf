@@ -63,18 +63,17 @@ variable "lambda_env_vars" {
   default     = {
     S3_BUCKET = "clickstream-bucket"
     DYNAMODB_TABLE = "clickstream-sessions"
-    AWS_ENDPOINT_URL = "http://localhost:4566"
   }
 }
 
 variable "lambda_source_code_filename" {
   type        = string
-  default     = ""
+  default     = "../../../lambda_package.zip"
 }
 
 variable "lambda_source_code_hash" {
   type        = string
-  default     = ""
+  default     = "WBBq8psH22P2Fcfew/MTNre4IN7MflD1surRg/9i+jo="
 }
 
 variable "api_gateway_name" {
@@ -108,13 +107,13 @@ variable "ecs_image" {
 }
 
 variable "ecs_cpu" {
-  type        = string
-  default     = "512"
+  type        = number
+  default     = 512
 }
 
 variable "ecs_memory" {
-  type        = string
-  default     = "1024"
+  type        = number
+  default     = 1024
 }
 
 variable "ecs_container_port" {

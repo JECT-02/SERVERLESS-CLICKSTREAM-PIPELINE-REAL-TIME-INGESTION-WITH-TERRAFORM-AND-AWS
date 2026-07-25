@@ -6,7 +6,9 @@ import math
 def parse_timestamp(ts):
     if isinstance(ts, str):
         return datetime.fromisoformat(ts.replace('Z', '+00:00'))
-    return ts
+    if isinstance(ts, (int, float)):
+        return datetime.fromtimestamp(ts, tz=timezone.utc)
+    return datetime.fromtimestamp(float(str(ts)), tz=timezone.utc)
 
 
 def calculate_velocity(x1: float, y1: float, x2: float, y2: float, dt: int) -> float:

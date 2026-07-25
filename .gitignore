@@ -57,6 +57,17 @@ venv/
 # Docker
 .docker/
 
+# Lambda package
+lambda_package.zip
+**/lambda_package.zip
+
+# Test artifacts
+*response.json
+payload.json
+output.json
+test_extract/
+lambda/package/
+
 # IDE
 *.swp
 *.swo

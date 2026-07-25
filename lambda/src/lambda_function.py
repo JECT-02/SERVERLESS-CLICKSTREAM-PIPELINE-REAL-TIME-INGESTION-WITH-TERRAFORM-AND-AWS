@@ -3,6 +3,7 @@ import os
 import sys
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Dict, Any
 
 import boto3
@@ -20,12 +21,20 @@ ECS_ENDPOINT = os.environ.get('ECS_ENDPOINT', 'http://localhost:8080')
 
 boto_config = Config(
     region_name=AWS_REGION,
-    retries={'max_attempts': 3, 'mode': 'standard'}
+    retries={'max_attempts': 3, 'mode': 'standard'},
+    s3={'addressing_style': 'path'}
 )
 
-s3 = boto3.client('s3', endpoint_url=AWS_ENDPOINT_URL, config=boto_config)
-dynamodb = boto3.resource('dynamodb', endpoint_url=AWS_ENDPOINT_URL, config=boto_config)
-table = dynamodb.Table(DYNAMODB_TABLE)
+s3 = boto3.client('s3', endpoint_url=AWS_ENDPOINT_URL, config=Config(
+    region_name=AWS_REGION,
+    retries={'max_attempts': 3, 'mode': 'standard'},
+    s3={'addressing_style': 'path'}
+))
+dynamodb = boto3.resource('dynamodb', endpoint_url=AWS_ENDPOINT_URL, config=Config(
+    region_name=AWS_REGION,
+    retries={'max_attempts': 3, 'mode': 'standard'}
+))
+table = dynamodb.Table(os.environ.get('DYNAMODB_TABLE', 'clickstream-sessions'))
 
 REQUIRED_FIELDS = [
     'event_type', 'session_id', 'user_id', 'timestamp'
@@ -77,19 +86,29 @@ def store_event_s3(event_data: Dict[str, Any], s3_key: str) -> None:
     )
 
 
+def to_dynamo_value(value):
+    if isinstance(value, float):
+        return Decimal(str(value))
+    if isinstance(value, dict):
+        return {k: to_dynamo_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [to_dynamo_value(v) for v in value]
+    return value
+
+
 def store_session_state(event_data: Dict[str, Any], s3_key: str) -> None:
     item = {
         'session_id': event_data['session_id'],
         'timestamp': int(datetime.fromisoformat(event_data['timestamp'].replace('Z', '+00:00')).timestamp()),
         'user_id': event_data['user_id'],
         'event_type': event_data['event_type'],
-        'cart_value': event_data.get('cart_value', 0),
-        'product_count': event_data.get('product_count', 0),
-        'product_quantities': event_data.get('product_quantities', {}),
+        'cart_value': to_dynamo_value(event_data.get('cart_value', 0)),
+        'product_count': to_dynamo_value(event_data.get('product_count', 0)),
+        'product_quantities': to_dynamo_value(event_data.get('product_quantities', {})),
         'shipping_option_selected': event_data.get('shipping_option_selected', 'standard'),
-        'mouse_click_count': event_data.get('mouse_click_count', 0),
-        'mouse_x': event_data.get('mouse_x', 0),
-        'mouse_y': event_data.get('mouse_y', 0),
+        'mouse_click_count': to_dynamo_value(event_data.get('mouse_click_count', 0)),
+        'mouse_x': to_dynamo_value(event_data.get('mouse_x', 0)),
+        'mouse_y': to_dynamo_value(event_data.get('mouse_y', 0)),
         'page': event_data.get('page', 'cart'),
         's3_key': s3_key,
         'ttl': int(datetime.now(timezone.utc).timestamp()) + 60
@@ -170,7 +189,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 session_data['heartbeats'].append({
                     'mouse_x': item.get('mouse_x', 0),
                     'mouse_y': item.get('mouse_y', 0),
-                    'timestamp': datetime.fromtimestamp(item['timestamp'], tz=timezone.utc).isoformat()
+                    'timestamp': datetime.fromtimestamp(float(item['timestamp']), tz=timezone.utc).isoformat()
                 })
 
         features = calculate_mouse_features(session_data)
@@ -193,9 +212,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'body': json.dumps({'error': 'Invalid JSON'})
         }
     except Exception as e:
-        print(f"Lambda error: {e}")
+        error_msg = f"Lambda error: {e}"
+        print(error_msg)
+        import traceback
+        traceback.print_exc()
         return {
             'statusCode': 500,
             'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Internal server error'})
+            'body': json.dumps({'error': str(e)})
         }
