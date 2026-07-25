@@ -9,6 +9,8 @@ resource "aws_ecs_task_definition" "inference" {
   container_definitions = jsonencode([{
     name        = var.container_name
     image       = var.image
+    cpu         = var.cpu
+    memory      = var.memory
     portMappings = [{
       containerPort = var.container_port
       protocol      = "tcp"

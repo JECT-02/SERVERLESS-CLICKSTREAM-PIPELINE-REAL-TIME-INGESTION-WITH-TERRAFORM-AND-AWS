@@ -160,9 +160,3 @@ variable "target_group_name" {
   type        = string
   default     = "clickstream-tg"
 }
-
-variable "enable_alb" {
-  type        = bool
-  default     = false
-  description = "Enable ALB and ECS service (set to true for AWS real, false for Floci)"
-}
