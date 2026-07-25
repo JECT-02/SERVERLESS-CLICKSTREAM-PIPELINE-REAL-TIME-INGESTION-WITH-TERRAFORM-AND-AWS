@@ -52,7 +52,7 @@ def test_lambda_handler_valid_event(mock_table, mock_s3, lambda_event, context):
     assert body['trigger_retention'] is False
     assert body['abandon_probability'] == 0.0
 
-    mock_s3.put_object.assert_called_once()
+    assert mock_s3.put_object.call_count == 2
     mock_table.put_item.assert_called_once()
 
 
@@ -184,10 +184,15 @@ def test_lambda_handler_s3_key_format(mock_table, mock_s3, lambda_event, context
 
     lambda_handler(lambda_event, context)
 
-    call_args = mock_s3.put_object.call_args
-    s3_key = call_args[1]['Key']
-    assert s3_key.startswith('raw/')
-    assert '.json' in s3_key
+    call_args_list = mock_s3.put_object.call_args_list
+    raw_call = call_args_list[0]
+    enriched_call = call_args_list[1]
+    raw_key = raw_call[1]['Key']
+    enriched_key = enriched_call[1]['Key']
+    assert raw_key.startswith('raw/')
+    assert '.json' in raw_key
+    assert enriched_key.startswith('enriched/')
+    assert '.json' in enriched_key
 
 
 @patch.dict(os.environ, {

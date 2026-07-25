@@ -4,14 +4,14 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 
 import boto3
 from botocore.config import Config
 
 sys.path.append(os.path.join(os.path.dirname(__file__)))
 
-from features import calculate_mouse_features, prepare_inference_payload
+from features import extract_all_features, prepare_inference_payload
 
 S3_BUCKET = os.environ.get('S3_BUCKET', 'clickstream-bucket')
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE', 'clickstream-sessions')
@@ -70,11 +70,11 @@ def validate_event(event_data: Dict[str, Any]) -> tuple:
     return True, None
 
 
-def generate_s3_key(event_type: str, session_id: str, timestamp: str) -> str:
+def generate_s3_key(event_type: str, session_id: str, timestamp: str, prefix: str = 'raw') -> str:
     dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
     date_path = dt.strftime('%Y/%m/%d')
     event_id = str(uuid.uuid4())[:8]
-    return f"raw/{date_path}/{event_type}_{session_id}_{event_id}.json"
+    return f"{prefix}/{date_path}/{event_type}_{session_id}_{event_id}.json"
 
 
 def store_event_s3(event_data: Dict[str, Any], s3_key: str) -> None:
@@ -84,6 +84,36 @@ def store_event_s3(event_data: Dict[str, Any], s3_key: str) -> None:
         Body=json.dumps(event_data, default=str).encode('utf-8'),
         ContentType='application/json'
     )
+
+
+def store_enriched_event_s3(
+    event_data: Dict[str, Any],
+    features: Optional[Dict[str, Any]],
+    inference_response: Dict[str, Any],
+    heartbeat_history: List[Dict[str, Any]],
+    s3_raw_key: str
+) -> str:
+    dt = datetime.fromisoformat(event_data['timestamp'].replace('Z', '+00:00'))
+    date_path = dt.strftime('%Y/%m/%d')
+    event_id = str(uuid.uuid4())[:8]
+    enriched_key = f"enriched/{date_path}/{event_data['session_id']}_{event_data['event_type']}_{event_id}.json"
+
+    enriched = {
+        'raw_event': event_data,
+        'raw_s3_key': s3_raw_key,
+        'features': features,
+        'inference': inference_response,
+        'heartbeat_count': len(heartbeat_history),
+        'processed_at': datetime.now(timezone.utc).isoformat()
+    }
+
+    s3.put_object(
+        Bucket=S3_BUCKET,
+        Key=enriched_key,
+        Body=json.dumps(enriched, default=str).encode('utf-8'),
+        ContentType='application/json'
+    )
+    return enriched_key
 
 
 def to_dynamo_value(value):
@@ -97,9 +127,10 @@ def to_dynamo_value(value):
 
 
 def store_session_state(event_data: Dict[str, Any], s3_key: str) -> None:
+    dt = datetime.fromisoformat(event_data['timestamp'].replace('Z', '+00:00'))
     item = {
         'session_id': event_data['session_id'],
-        'timestamp': int(datetime.fromisoformat(event_data['timestamp'].replace('Z', '+00:00')).timestamp()),
+        'timestamp': Decimal(str(dt.timestamp())),
         'user_id': event_data['user_id'],
         'event_type': event_data['event_type'],
         'cart_value': to_dynamo_value(event_data.get('cart_value', 0)),
@@ -181,23 +212,36 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'shipping_cost': event_data.get('shipping_cost', 0),
             'mouse_click_count': event_data.get('mouse_click_count', 0),
             'page': event_data.get('page', 'cart'),
-            'heartbeats': []
+            'heartbeats': [],
+            'current_event': event_data
         }
 
         for item in session_history['items']:
             if item.get('event_type') == 'heartbeat':
                 session_data['heartbeats'].append({
-                    'mouse_x': item.get('mouse_x', 0),
-                    'mouse_y': item.get('mouse_y', 0),
-                    'timestamp': datetime.fromtimestamp(float(item['timestamp']), tz=timezone.utc).isoformat()
+                    'event_type': 'heartbeat',
+                    'mouse_x': int(item.get('mouse_x', 0)),
+                    'mouse_y': int(item.get('mouse_y', 0)),
+                    'timestamp': datetime.fromtimestamp(float(item['timestamp']), tz=timezone.utc).isoformat(),
+                    'cart_value': float(item.get('cart_value', 0)),
+                    'product_count': int(item.get('product_count', 0)),
+                    'product_quantities': item.get('product_quantities', {}),
+                    'shipping_option_selected': item.get('shipping_option_selected', 'standard'),
+                    'mouse_click_count': int(item.get('mouse_click_count', 0)),
+                    'page': item.get('page', 'cart')
                 })
 
-        features = calculate_mouse_features(session_data)
+        features = extract_all_features(session_data)
 
         inference_response = {'abandon_probability': 0.0, 'trigger_retention': False}
         if features:
             payload = prepare_inference_payload(session_data, features)
             inference_response = invoke_inference(payload)
+
+        store_enriched_event_s3(
+            event_data, features, inference_response,
+            session_data['heartbeats'], s3_key
+        )
 
         return {
             'statusCode': 200,

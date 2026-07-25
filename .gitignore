@@ -65,6 +65,9 @@ lambda_package.zip
 *response.json
 payload.json
 output.json
+enriched.json
+latest_enriched.json
+_debug_*.py
 test_extract/
 lambda/package/
 

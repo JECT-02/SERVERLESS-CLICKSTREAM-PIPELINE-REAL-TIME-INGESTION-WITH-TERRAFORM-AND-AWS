@@ -18,7 +18,7 @@ resource "aws_iam_role_policy" "lambda_s3_write" {
     Statement = [{
       Effect = "Allow"
       Action = ["s3:PutObject", "s3:GetObject"]
-      Resource = ["${var.bucket_arn}/raw/*", "${var.bucket_arn}/models/*"]
+      Resource = ["${var.bucket_arn}/raw/*", "${var.bucket_arn}/models/*", "${var.bucket_arn}/enriched/*"]
     }]
   })
 }
