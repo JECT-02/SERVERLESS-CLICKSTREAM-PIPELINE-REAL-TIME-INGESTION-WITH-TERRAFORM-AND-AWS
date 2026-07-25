@@ -135,28 +135,3 @@ variable "ecs_desired_count" {
   type        = number
   default     = 1
 }
-
-variable "vpc_id" {
-  type        = string
-  default     = ""
-}
-
-variable "subnet_ids" {
-  type        = list(string)
-  default     = []
-}
-
-variable "alb_security_group_ids" {
-  type        = list(string)
-  default     = []
-}
-
-variable "alb_name" {
-  type        = string
-  default     = "clickstream-alb"
-}
-
-variable "target_group_name" {
-  type        = string
-  default     = "clickstream-tg"
-}

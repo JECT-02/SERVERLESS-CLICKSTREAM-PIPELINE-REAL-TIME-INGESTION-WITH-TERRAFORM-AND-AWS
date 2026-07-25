@@ -13,6 +13,7 @@ provider "aws" {
     iam           = var.floci_endpoint
     logs          = var.floci_endpoint
     cloudformation = var.floci_endpoint
+    ec2           = var.floci_endpoint
   }
   skip_credentials_validation = true
   skip_metadata_api_check     = true
@@ -62,6 +63,11 @@ module "iam_roles" {
   bucket_arn           = module.s3_bucket.bucket_arn
   dynamodb_table_arn   = module.dynamodb_table.table_arn
   ecs_cluster_arn      = ""
+}
+
+module "vpc" {
+  source = "../../modules/vpc"
+  tags   = local.common_tags
 }
 
 module "ecs_cluster" {
@@ -133,4 +139,16 @@ output "dynamodb_table_name" {
 
 output "lambda_function_name" {
   value = module.lambda_function.function_name
+}
+
+output "vpc_id" {
+  value = module.vpc.vpc_id
+}
+
+output "public_subnet_ids" {
+  value = module.vpc.public_subnet_ids
+}
+
+output "ecs_tasks_security_group_id" {
+  value = module.vpc.ecs_tasks_security_group_id
 }
