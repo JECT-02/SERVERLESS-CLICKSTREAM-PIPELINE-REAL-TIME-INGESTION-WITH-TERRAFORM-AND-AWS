@@ -52,8 +52,17 @@
   </div>
 </div>
 
+<script src="config.js"></script>
 <script>
-const API_URL = "http://localhost:4566/restapis/ID_API/STAGE/events";
+const CONFIG = window.CLICKSTREAM_CONFIG || {
+  apiUrl: "http://localhost:4566/restapis/ID_API/STAGE/events",
+  trackedPages: ["cart", "checkout"],
+  heartbeatIntervalMs: 250
+};
+
+const API_URL = CONFIG.apiUrl;
+const TRACKED_PAGES = new Set(CONFIG.trackedPages);
+const HEARTBEAT_INTERVAL_MS = CONFIG.heartbeatIntervalMs;
 
 const productos = [
   { id: "prod_001", nombre: "Laptop Gamer X", precio: 1200, categoria: "computacion", imagen: "https://images.unsplash.com/photo-1603302576837-37561b2e2302?w=500" },
@@ -107,44 +116,36 @@ let deliveryMode = "shipping";
 let shippingType = "standard";
 let selectedStore = tiendas[0];
 let retentionData = null;
+let heartbeatIntervalId = null;
+let eventBuffer = [];
+let mouseClickCount = 0;
+let mouseX = 0;
+let mouseY = 0;
 
-function getTimeOnPage() {
-  return Math.floor((Date.now() - pageLoadTime) / 1000);
+function shouldTrack() {
+  if (!TRACKED_PAGES.has(currentPage)) return false;
+  if (currentPage === "cart" && carrito.length === 0) return false;
+  if (currentPage === "checkout" && carrito.length === 0) return false;
+  return true;
 }
 
-function getShippingCost() {
-  if (deliveryMode === "store") return 0;
-  const totalItems = carrito.reduce((s, p) => s + p.cantidad, 0);
-  const base = totalItems * 4;
-  return shippingType === "express" ? base * 3 : base;
+function flushEventBuffer() {
+  if (eventBuffer.length === 0) return;
+  const events = [...eventBuffer];
+  eventBuffer = [];
+  events.forEach(ev => sendEvent(ev));
 }
 
-function getShippingDays() {
-  if (deliveryMode === "store") return 0;
-  return shippingType === "express" ? 1 : 4;
+function bufferEvent(event) {
+  eventBuffer.push(event);
+  if (eventBuffer.length > 100) eventBuffer.shift();
 }
 
-function getSubtotal() {
-  return carrito.reduce((s, p) => s + p.precio * p.cantidad, 0);
-}
-
-function getTotalItems() {
-  return carrito.reduce((s, p) => s + p.cantidad, 0);
-}
-
-function makeEvent(eventType, extra = {}) {
-  return {
-    user_id: userId,
-    session_id: sessionId,
-    event_type: eventType,
-    timestamp: new Date().toISOString(),
-    device: "desktop",
-    time_on_page: getTimeOnPage(),
-    ...extra,
-  };
-}
-
-async function sendEvent(event) {
+async function sendEventNow(event) {
+  if (!shouldTrack()) {
+    bufferEvent(event);
+    return;
+  }
   try {
     const res = await fetch(API_URL, {
       method: "POST",
@@ -161,6 +162,131 @@ async function sendEvent(event) {
   } catch (e) {
     console.log("Event sent (offline mode):", event.event_type);
   }
+}
+
+function sendEvent(event) {
+  if (shouldTrack()) {
+    sendEventNow(event);
+  } else {
+    bufferEvent(event);
+  }
+}
+
+function startHeartbeat() {
+  stopHeartbeat();
+  if (!shouldTrack()) return;
+  heartbeatIntervalId = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+}
+
+function stopHeartbeat() {
+  if (heartbeatIntervalId) {
+    clearInterval(heartbeatIntervalId);
+    heartbeatIntervalId = null;
+  }
+}
+
+function getSubtotal() {
+  return carrito.reduce((s, p) => s + p.precio * p.cantidad, 0);
+}
+
+function getTotalItems() {
+  return carrito.reduce((s, p) => s + p.cantidad, 0);
+}
+
+function getProductQuantities() {
+  const obj = {};
+  carrito.forEach(p => { obj[p.id] = p.cantidad; });
+  return obj;
+}
+
+function getShippingCost() {
+  if (deliveryMode === "store") return 0;
+  const totalItems = getTotalItems();
+  const base = totalItems * 4;
+  return shippingType === "express" ? base * 3 : base;
+}
+
+function getShippingDays() {
+  if (deliveryMode === "store") return 0;
+  return shippingType === "express" ? 1 : 4;
+}
+
+function makeEvent(eventType, extra = {}) {
+  const payload = {
+    event_type: eventType,
+    timestamp: new Date().toISOString(),
+    session_id: sessionId,
+    user_id: userId,
+    mouse_click_count: mouseClickCount,
+  };
+
+  switch (eventType) {
+    case "heartbeat":
+      payload.page = currentPage;
+      payload.cart_value = getSubtotal();
+      payload.product_count = carrito.length;
+      payload.product_quantities = getProductQuantities();
+      payload.shipping_option_selected = deliveryMode === "store" ? "store" : shippingType;
+      payload.mouse_x = mouseX;
+      payload.mouse_y = mouseY;
+      break;
+    case "page_view":
+      payload.page = extra.page || currentPage;
+      payload.cart_value = getSubtotal();
+      payload.product_count = carrito.length;
+      payload.product_quantities = getProductQuantities();
+      payload.shipping_option_selected = deliveryMode === "store" ? "store" : shippingType;
+      break;
+    case "add_to_cart":
+      payload.product_id = extra.product_id;
+      payload.category = extra.category;
+      payload.price = extra.price;
+      payload.cart_value = getSubtotal();
+      payload.product_count = carrito.length;
+      payload.product_quantities = getProductQuantities();
+      payload.shipping_option_selected = deliveryMode === "store" ? "store" : shippingType;
+      break;
+    case "remove_from_cart":
+      payload.cart_value = getSubtotal();
+      payload.product_count = carrito.length;
+      payload.product_quantities = getProductQuantities();
+      payload.shipping_option_selected = deliveryMode === "store" ? "store" : shippingType;
+      break;
+    case "start_checkout":
+      payload.page = "checkout";
+      payload.cart_value = extra.cart_value;
+      payload.product_count = carrito.length;
+      payload.product_quantities = getProductQuantities();
+      payload.payment_method_selected = null;
+      payload.shipping_option_selected = extra.shipping_type;
+      break;
+    case "purchase":
+      payload.cart_value = extra.cart_value;
+      payload.product_count = carrito.length;
+      payload.product_quantities = getProductQuantities();
+      payload.payment_method_selected = extra.payment_method || "credit_card";
+      payload.shipping_option_selected = extra.shipping_type;
+      break;
+    case "abandon":
+      payload.cart_value = extra.cart_value;
+      payload.product_count = carrito.length;
+      payload.product_quantities = getProductQuantities();
+      payload.shipping_option_selected = extra.shipping_type;
+      payload.abandon_reason = extra.abandon_reason;
+      break;
+    case "view_product":
+      payload.product_id = extra.product_id;
+      payload.category = extra.category;
+      payload.price = extra.price;
+      break;
+  }
+
+  return payload;
+}
+
+function sendHeartbeat() {
+  if (!shouldTrack()) return;
+  sendEvent(makeEvent("heartbeat"));
 }
 
 function showRetention(data) {
@@ -232,7 +358,7 @@ function addToCart(prod) {
   const totalItems = getTotalItems();
   const subtotal = getSubtotal();
   document.getElementById("cartSummary").textContent = `Carrito (${totalItems})`;
-  sendEvent(makeEvent("add_to_cart", { product_id: prod.id, category: prod.categoria, price: prod.precio, cart_value: subtotal, cart_items: totalItems }));
+  sendEvent(makeEvent("add_to_cart", { product_id: prod.id, category: prod.categoria, price: prod.precio }));
 }
 
 function removeFromCart(id) {
@@ -240,12 +366,14 @@ function removeFromCart(id) {
   const totalItems = getTotalItems();
   const subtotal = getSubtotal();
   document.getElementById("cartSummary").textContent = `Carrito (${totalItems})`;
-  sendEvent(makeEvent("remove_from_cart", { product_id: id, cart_value: subtotal, cart_items: totalItems }));
+  sendEvent(makeEvent("remove_from_cart", { product_id: id }));
   renderCart();
 }
 
 function renderCatalogo() {
   currentPage = "catalog";
+  pageLoadTime = Date.now();
+  stopHeartbeat();
   document.getElementById("pageContent").innerHTML = `
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       ${productos.map((p) => `
@@ -263,16 +391,20 @@ function renderCatalogo() {
 
 function renderCart() {
   currentPage = "cart";
+  pageLoadTime = Date.now();
   if (carrito.length === 0) {
+    stopHeartbeat();
     document.getElementById("pageContent").innerHTML = `<div class="text-center py-20 text-gray-500"><p class="text-xl mb-4">Tu carrito esta vacio</p><button class="bg-blue-600 text-white px-4 py-2 rounded" onclick="goToCatalog()">Ir a tienda</button></div>`;
     return;
   }
+  flushEventBuffer();
+  startHeartbeat();
   const totalItems = getTotalItems();
   const subtotal = getSubtotal();
   const shipping = getShippingCost();
   const days = getShippingDays();
   const total = subtotal + shipping;
-  sendEvent(makeEvent("page_view", { page: "cart", cart_value: subtotal, cart_items: totalItems, delivery_mode: deliveryMode, shipping_cost: shipping, shipping_type: deliveryMode === "shipping" ? shippingType : "none" }));
+  sendEvent(makeEvent("page_view", { page: "cart" }));
   document.getElementById("pageContent").innerHTML = `
     <h2 class="text-xl font-bold mb-4">Tu Carrito (${totalItems} productos)</h2>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -373,12 +505,15 @@ function goToCatalog() {
 
 function goToCheckout() {
   currentPage = "checkout";
+  pageLoadTime = Date.now();
+  flushEventBuffer();
+  startHeartbeat();
   const totalItems = getTotalItems();
   const subtotal = getSubtotal();
   const shipping = getShippingCost();
   const days = getShippingDays();
   const total = subtotal + shipping;
-  sendEvent(makeEvent("start_checkout", { cart_value: subtotal, cart_items: totalItems, delivery_mode: deliveryMode, shipping_cost: shipping, shipping_type: deliveryMode === "shipping" ? shippingType : "none" }));
+  sendEvent(makeEvent("start_checkout", { cart_value: subtotal, shipping_type: shippingType }));
   document.getElementById("pageContent").innerHTML = `
     <div class="max-w-md mx-auto">
       <h2 class="text-xl font-bold mb-4">Confirmar compra</h2>
@@ -401,6 +536,13 @@ function goToCheckout() {
           <span>$${total.toFixed(2)}</span>
         </div>
       </div>
+      <div class="flex gap-2 mb-2">
+        <select id="paymentMethod" class="flex-1 border rounded p-2 text-sm">
+          <option value="credit_card">Tarjeta de credito</option>
+          <option value="debit_card">Tarjeta de debito</option>
+          <option value="cash">Efectivo</option>
+        </select>
+      </div>
       <button class="w-full bg-green-600 text-white py-3 rounded hover:bg-green-700" onclick="confirmCheckout()">Confirmar compra</button>
       <button class="w-full text-gray-500 py-2 mt-2" onclick="goToCart()">Volver al carrito</button>
     </div>
@@ -411,12 +553,14 @@ function confirmCheckout() {
   const totalItems = getTotalItems();
   const subtotal = getSubtotal();
   const shipping = getShippingCost();
-  sendEvent(makeEvent("purchase", { cart_value: subtotal, cart_items: totalItems, delivery_mode: deliveryMode, shipping_cost: shipping }));
+  const paymentMethod = document.getElementById("paymentMethod").value;
+  sendEvent(makeEvent("purchase", { cart_value: subtotal, shipping_type: shippingType, payment_method: paymentMethod }));
   carrito = [];
   deliveryMode = "shipping";
   shippingType = "standard";
   document.getElementById("cartSummary").textContent = "Carrito (0)";
   document.getElementById("pageContent").innerHTML = `<div class="text-center py-20"><p class="text-2xl text-green-600 font-bold mb-2">Compra exitosa!</p><p class="text-gray-500">Gracias por tu compra</p><button class="bg-blue-600 text-white px-4 py-2 rounded mt-4" onclick="goToCatalog()">Seguir comprando</button></div>`;
+  stopHeartbeat();
 }
 
 function showAbandon() {
@@ -434,22 +578,27 @@ function abandonCart(reason) {
   const totalItems = getTotalItems();
   const subtotal = getSubtotal();
   const shipping = getShippingCost();
-  sendEvent(makeEvent("abandon", { cart_value: subtotal, cart_items: totalItems, delivery_mode: deliveryMode, shipping_cost: shipping, shipping_type: deliveryMode === "shipping" ? shippingType : "none", abandon_reason: reason }));
+  sendEvent(makeEvent("abandon", { cart_value: subtotal, shipping_type: shippingType, abandon_reason: reason }));
   carrito = [];
   deliveryMode = "shipping";
   shippingType = "standard";
   document.getElementById("cartSummary").textContent = "Carrito (0)";
   closeAbandon();
   document.getElementById("pageContent").innerHTML = `<div class="text-center py-20 text-gray-500"><p class="text-xl mb-4">Carrito abandonado</p><p class="text-sm text-gray-400 mb-4">Motivo: ${reason}</p><button class="bg-blue-600 text-white px-4 py-2 rounded" onclick="goToCatalog()">Volver a tienda</button></div>`;
+  stopHeartbeat();
 }
 
 window.addEventListener("beforeunload", () => {
+  if (!shouldTrack()) return;
   const totalItems = getTotalItems();
   if (totalItems === 0) return;
   const subtotal = getSubtotal();
   const shipping = getShippingCost();
-  navigator.sendBeacon(API_URL, JSON.stringify(makeEvent("abandon", { cart_value: subtotal, cart_items: totalItems, delivery_mode: deliveryMode, shipping_cost: shipping, abandon_reason: "cerro ventana" })));
+  navigator.sendBeacon(API_URL, JSON.stringify(makeEvent("abandon", { cart_value: subtotal, shipping_type: shippingType, abandon_reason: "cerro ventana" })));
 });
+
+document.addEventListener("click", () => { mouseClickCount++; });
+document.addEventListener("mousemove", (e) => { mouseX = e.clientX; mouseY = e.clientY; });
 
 renderCatalogo();
 </script>

@@ -3,6 +3,7 @@
         lambda-package lambda-test lambda-lint \
         ecs-build ecs-test ecs-run-local \
         train train-local \
+        frontend-test frontend-install \
         test lint format clean install
 
 # Variables
@@ -48,6 +49,8 @@ help:
 	@echo ""
 	@echo "Frontend:"
 	@echo "  make store           - Abre la tienda en el navegador"
+	@echo "  make frontend-install - Instala dependencias npm"
+	@echo "  make frontend-test    - Ejecuta tests vitest"
 	@echo ""
 	@echo "Utilidades:"
 	@echo "  make test            - Ejecuta todos los tests (pytest)"
@@ -122,6 +125,12 @@ train-local:
 # Frontend
 store:
 	cmd /c start "" "$(FRONTEND_DIR)/index.html"
+
+frontend-install:
+	cd $(FRONTEND_DIR) && npm install
+
+frontend-test:
+	cd $(FRONTEND_DIR) && npm test
 
 # Utils
 test:
