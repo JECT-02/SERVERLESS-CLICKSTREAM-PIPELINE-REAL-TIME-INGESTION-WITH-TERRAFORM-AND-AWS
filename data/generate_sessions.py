@@ -1,0 +1,983 @@
+import json
+import math
+import os
+import random
+import statistics
+import uuid
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+import polars as pl
+
+
+SESSION_COUNT = 5000
+ABANDON_RATE_TARGET = 0.70
+HEARTBEAT_INTERVAL_MS = 250
+VIEWPORT_W = 1920
+VIEWPORT_H = 1080
+
+CATALOG = [
+    {'id': 'prod_001', 'nombre': 'Laptop Gamer X', 'precio': 1200, 'categoria': 'computacion'},
+    {'id': 'prod_002', 'nombre': 'Teclado Mecanico RGB', 'precio': 85, 'categoria': 'perifericos'},
+    {'id': 'prod_003', 'nombre': 'Monitor 27 4K', 'precio': 450, 'categoria': 'computacion'},
+    {'id': 'prod_004', 'nombre': 'Mouse Inalambrico', 'precio': 45, 'categoria': 'perifericos'},
+    {'id': 'prod_005', 'nombre': 'Auriculares Bluetooth', 'precio': 95, 'categoria': 'audio'},
+    {'id': 'prod_006', 'nombre': 'Webcam HD 1080p', 'precio': 70, 'categoria': 'perifericos'},
+    {'id': 'prod_007', 'nombre': 'Tablet 10 Pulgadas', 'precio': 350, 'categoria': 'computacion'},
+    {'id': 'prod_008', 'nombre': 'Smartwatch Deportivo', 'precio': 200, 'categoria': 'wearables'},
+    {'id': 'prod_009', 'nombre': 'Silla Ergonomicas', 'precio': 320, 'categoria': 'muebles'},
+    {'id': 'prod_010', 'nombre': 'Escritorio Electrico', 'precio': 580, 'categoria': 'muebles'},
+    {'id': 'prod_011', 'nombre': 'Camara Web 4K', 'precio': 130, 'categoria': 'perifericos'},
+    {'id': 'prod_012', 'nombre': 'Hub USB-C 7 puertos', 'precio': 40, 'categoria': 'perifericos'},
+    {'id': 'prod_013', 'nombre': 'Microfono Condensador', 'precio': 110, 'categoria': 'audio'},
+    {'id': 'prod_014', 'nombre': 'iPad Air', 'precio': 650, 'categoria': 'computacion'},
+    {'id': 'prod_015', 'nombre': 'Cargador Portatil', 'precio': 35, 'categoria': 'accesorios'},
+]
+CATEGORIES = list(set(p['categoria'] for p in CATALOG))
+PROD_BY_CATEGORY = defaultdict(list)
+for p in CATALOG:
+    PROD_BY_CATEGORY[p['categoria']].append(p)
+
+DEVICES = ['desktop', 'mobile', 'tablet']
+DEVICE_WEIGHTS = [0.65, 0.25, 0.10]
+DELIVERY_MODES = ['shipping', 'store']
+SHIPPING_TYPES = ['standard', 'express']
+SHIPPING_COST_PER_ITEM = {'standard': 4.0, 'express': 12.0}
+ABANDON_REASONS = ['extra_costs', 'complex_checkout', 'browsing', 'slow_delivery',
+                   'payment_security', 'just_browsing']
+ABANDON_REASON_WEIGHTS = [0.32, 0.18, 0.17, 0.15, 0.10, 0.08]
+PAYMENT_METHODS = ['credit_card', 'debit_card', 'paypal', 'transfer']
+PAYMENT_METHOD_WEIGHTS = [0.40, 0.25, 0.20, 0.15]
+
+RNG = random.Random()
+np.random.seed(42)
+
+
+def weighted_choice(items, weights):
+    total = sum(weights)
+    r = RNG.random() * total
+    upto = 0.0
+    for item, w in zip(items, weights):
+        upto += w
+        if r <= upto:
+            return item
+    return items[-1]
+
+
+def pick_items() -> List[Tuple]:
+    n = RNG.randint(1, 6)
+    chosen = RNG.sample(CATALOG, min(n, len(CATALOG)))
+    items = []
+    for p in chosen:
+        qty = RNG.randint(1, 3)
+        items.append((p['id'], p['nombre'], p['precio'], p['categoria'], qty))
+    return items
+
+
+def cart_value_and_qty(items):
+    total_value = 0.0
+    total_qty = 0
+    qty_dict = {}
+    for pid, nombre, precio, categoria, qty in items:
+        total_value += precio * qty
+        total_qty += qty
+        qty_dict[pid] = qty
+    return total_value, total_qty, qty_dict
+
+
+def generate_user_id():
+    return str(uuid.uuid4())
+
+
+def generate_session_id():
+    return str(uuid.uuid4())
+
+
+def bounded_gauss(mean, sigma, lo, hi):
+    v = RNG.gauss(mean, sigma)
+    return max(lo, min(hi, v))
+
+
+class MousePath:
+    ZONES = {
+        'cart_center':      (500, 350, 200, 900, 100, 650),
+        'cart_bottom':      (550, 780, 200, 900, 700, 900),
+        'checkout_center':  (600, 400, 250, 1000, 100, 700),
+        'checkout_options': (600, 300, 250, 1000, 150, 500),
+        'checkout_form':    (550, 500, 250, 1000, 300, 700),
+        'checkout_place':   (600, 800, 300, 1000, 650, 900),
+        'product_modal':    (800, 400, 500, 1400, 100, 800),
+        'exit_top_right':   (1880, 20, 1820, 1920, 0, 80),
+        'back_to_cart':     (100, 800, 50, 250, 700, 900),
+    }
+
+    @staticmethod
+    def random_point(zone_name: str) -> Tuple[int, int]:
+        z = MousePath.ZONES[zone_name]
+        cx, cy, xmin, xmax, ymin, ymax = z
+        x = int(RNG.uniform(xmin, xmax))
+        y = int(RNG.uniform(ymin, ymax))
+        return (x, y)
+
+    @staticmethod
+    def walk(start: Tuple[int, int], end: Tuple[int, int],
+             steps: int, archetype: str, step_idx: int,
+             total_steps: int) -> List[Tuple[int, int]]:
+        sx, sy = start
+        ex, ey = end
+        points = []
+
+        if archetype == 'purchaser':
+            for i in range(steps):
+                t = (i + 1) / steps
+                x = sx + (ex - sx) * t + RNG.gauss(0, 8)
+                y = sy + (ey - sy) * t + RNG.gauss(0, 8)
+                points.append((int(x), int(y)))
+        else:
+            phase_progress = step_idx / max(total_steps, 1)
+            noise_scale = 15 + phase_progress * 25
+            for i in range(steps):
+                t = (i + 1) / steps
+                mid = int(steps * 0.3)
+                if i < mid:
+                    perturb = RNG.gauss(0, noise_scale)
+                    x = sx + (ex - sx) * t + perturb * math.sin(math.pi * i / mid)
+                    y = sy + (ey - sy) * t + RNG.gauss(0, noise_scale)
+                else:
+                    x = sx + (ex - sx) * t + RNG.gauss(0, noise_scale * 0.7)
+                    y = sy + (ey - sy) * t + RNG.gauss(0, noise_scale)
+                points.append((int(x), int(y)))
+
+        return points
+
+    @staticmethod
+    def idle_steps(current: Tuple[int, int], steps: int,
+                   archetype: str, phase_progress: float) -> List[Tuple[int, int]]:
+        points = []
+        for i in range(steps):
+            if archetype == 'purchaser':
+                noise = RNG.gauss(0, 2)
+            else:
+                noise = RNG.gauss(0, 3 + phase_progress * 5)
+            x = int(current[0] + noise)
+            y = int(current[1] + RNG.gauss(0, 2))
+            x = max(0, min(VIEWPORT_W, x))
+            y = max(0, min(VIEWPORT_H, y))
+            points.append((x, y))
+        return points
+
+
+class SessionGenerator:
+    def __init__(self):
+        self.session_id = generate_session_id()
+        self.user_id = generate_user_id()
+        self.device = weighted_choice(DEVICES, DEVICE_WEIGHTS)
+        self.page = 'cart'
+        self.cart_items = pick_items()
+        self.cart_value, self.product_count, self.product_quantities = cart_value_and_qty(self.cart_items)
+        self.delivery_mode = 'shipping'
+        self.shipping_type = 'standard'
+        self.shipping_option_selected = 'standard'
+        self.mouse_click_count = 0
+        self.mouse_x = 500
+        self.mouse_y = 350
+        self.timestamp = datetime.now(timezone.utc) - timedelta(
+            hours=RNG.randint(1, 72), minutes=RNG.randint(0, 59)
+        )
+        self.events: List[Dict] = []
+        self.clock_offset_ms = 0
+        self.phase = 'cart'
+        self.phase_steps = 0
+        self.shipping_switches = 0
+        self.page_regressions = 0
+        self.cart_modifications = 0
+        self.cart_removes = 0
+        self.cart_adds = 0
+        self.exit_intent_count = 0
+        self.last_event_ts = self.timestamp
+        self.abandon_reason = None
+        self.payment_method = None
+        self.payment_method_selected = None
+
+    def advance_time(self, delta_ms: int):
+        self.clock_offset_ms += delta_ms
+        self.timestamp = self.last_event_ts + timedelta(milliseconds=self.clock_offset_ms)
+
+    def get_timestamp_str(self):
+        return self.timestamp.isoformat().replace('+00:00', 'Z')
+
+    def emit(self, event_type: str, extra: dict = None):
+        payload = {
+            'event_type': event_type,
+            'timestamp': self.get_timestamp_str(),
+            'session_id': self.session_id,
+            'user_id': self.user_id,
+            'mouse_click_count': self.mouse_click_count,
+            'device': self.device,
+        }
+        if extra:
+            payload.update(extra)
+        if event_type == 'heartbeat' or event_type in ('purchase', 'abandon', 'add_to_cart',
+                                                        'remove_from_cart', 'page_view', 'start_checkout'):
+            payload.setdefault('cart_value', self.cart_value)
+            payload.setdefault('product_count', self.product_count)
+            payload.setdefault('product_quantities', self.product_quantities)
+            payload.setdefault('shipping_option_selected', self.shipping_option_selected)
+        self.events.append(payload)
+
+    def heartbeat(self, mx: int = None, my: int = None):
+        self.advance_time(HEARTBEAT_INTERVAL_MS)
+        if mx is not None:
+            self.mouse_x = mx
+        if my is not None:
+            self.mouse_y = my
+        extra = {
+            'page': self.page,
+            'mouse_x': self.mouse_x,
+            'mouse_y': self.mouse_y,
+        }
+        self.emit('heartbeat', extra)
+
+    def add_to_cart(self, product):
+        self.advance_time(RNG.randint(150, 600))
+        self.cart_items.append((product['id'], product['nombre'], product['precio'],
+                                product['categoria'], 1))
+        self.cart_value, self.product_count, self.product_quantities = cart_value_and_qty(self.cart_items)
+        self.mouse_click_count += 1
+        self.cart_adds += 1
+        self.cart_modifications += 1
+        self.emit('add_to_cart', {
+            'product_id': product['id'],
+            'category': product['categoria'],
+            'price': product['precio'],
+            'page': self.page,
+            'mouse_x': self.mouse_x,
+            'mouse_y': self.mouse_y,
+        })
+
+    def remove_from_cart(self, pid, precio, categoria):
+        self.advance_time(RNG.randint(150, 500))
+        removed = False
+        for item in list(self.cart_items):
+            if item[0] == pid and item[4] > 0:
+                qty = item[4]
+                if qty > 1:
+                    idx = self.cart_items.index(item)
+                    self.cart_items[idx] = (item[0], item[1], item[2], item[3], qty - 1)
+                else:
+                    self.cart_items.remove(item)
+                removed = True
+                break
+        if not removed:
+            for item in list(self.cart_items):
+                if item[0] == pid:
+                    self.cart_items.remove(item)
+                    removed = True
+                    break
+        self.cart_value, self.product_count, self.product_quantities = cart_value_and_qty(self.cart_items)
+        self.mouse_click_count += 1
+        self.cart_removes += 1
+        self.cart_modifications += 1
+        self.emit('remove_from_cart', {
+            'page': self.page,
+            'mouse_x': self.mouse_x,
+            'mouse_y': self.mouse_y,
+        })
+
+    def start_checkout(self):
+        self.advance_time(RNG.randint(300, 1200))
+        self.page = 'checkout'
+        self.mouse_click_count += 1
+        self.emit('start_checkout', {
+            'page': 'checkout',
+            'payment_method_selected': None,
+            'mouse_x': self.mouse_x,
+            'mouse_y': self.mouse_y,
+        })
+
+    def back_to_cart(self):
+        self.advance_time(RNG.randint(200, 800))
+        self.page = 'cart'
+        self.page_regressions += 1
+        self.emit('page_view', {
+            'page': 'cart',
+            'mouse_x': self.mouse_x,
+            'mouse_y': self.mouse_y,
+        })
+
+    def toggle_shipping(self):
+        self.advance_time(RNG.randint(200, 700))
+        options = [s for s in SHIPPING_TYPES if s != self.shipping_type]
+        self.shipping_type = RNG.choice(options) if options else 'standard'
+        self.shipping_option_selected = self.shipping_type
+        if self.delivery_mode == 'store':
+            self.shipping_cost = 0
+        else:
+            self.shipping_cost = self.product_count * SHIPPING_COST_PER_ITEM[self.shipping_type]
+        self.mouse_click_count += 1
+        self.shipping_switches += 1
+
+    def toggle_delivery_mode(self):
+        self.advance_time(RNG.randint(200, 700))
+        modes = [m for m in DELIVERY_MODES if m != self.delivery_mode]
+        self.delivery_mode = RNG.choice(modes) if modes else 'shipping'
+        if self.delivery_mode == 'store':
+            self.shipping_cost = 0
+        else:
+            self.shipping_cost = self.product_count * SHIPPING_COST_PER_ITEM[self.shipping_type]
+        self.mouse_click_count += 1
+        self.shipping_switches += 1
+
+    def abandon(self, reason=None):
+        self.advance_time(RNG.randint(1000, 8000))
+        if reason is None:
+            reason = weighted_choice(ABANDON_REASONS, ABANDON_REASON_WEIGHTS)
+        self.abandon_reason = reason
+        self.emit('abandon', {
+            'abandon_reason': reason,
+            'page': self.page,
+            'mouse_x': self.mouse_x,
+            'mouse_y': self.mouse_y,
+        })
+
+    def purchase(self):
+        self.advance_time(RNG.randint(500, 3000))
+        pm = weighted_choice(PAYMENT_METHODS, PAYMENT_METHOD_WEIGHTS)
+        self.payment_method = pm
+        self.payment_method_selected = pm
+        self.mouse_click_count += 1
+        self.emit('purchase', {
+            'payment_method_selected': pm,
+            'payment_method': pm,
+            'page': 'checkout',
+            'mouse_x': self.mouse_x,
+            'mouse_y': self.mouse_y,
+        })
+
+    def view_product(self, product):
+        self.advance_time(RNG.randint(200, 800))
+        self.emit('view_product', {
+            'product_id': product['id'],
+            'category': product['categoria'],
+            'price': product['precio'],
+            'page': self.page,
+            'mouse_x': self.mouse_x,
+            'mouse_y': self.mouse_y,
+        })
+
+
+def calculate_velocity(x1, y1, x2, y2, dt_s):
+    if dt_s <= 0:
+        return 0.0
+    dist = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+    return dist / dt_s
+
+
+def safe_mouse(event, key, default=0):
+    val = event.get(key)
+    if val is None:
+        return default
+    return val
+
+
+def compute_session_features(events: List[Dict]) -> Dict:
+    sorted_events = sorted(events, key=lambda e: e['timestamp'])
+    heartbeats = [e for e in sorted_events if e.get('event_type') == 'heartbeat']
+    if len(heartbeats) < 2:
+        return None
+
+    velocities = []
+    accelerations = []
+    idle_total_ms = 0
+    prev_velocity = None
+    exit_intent_count = 0
+    dwell_segments = []
+    dwell_start = None
+    dwell_count = 0
+
+    for i in range(1, len(heartbeats)):
+        prev = heartbeats[i - 1]
+        curr = heartbeats[i]
+
+        prev_ts = datetime.fromisoformat(prev['timestamp'].replace('Z', '+00:00'))
+        curr_ts = datetime.fromisoformat(curr['timestamp'].replace('Z', '+00:00'))
+        dt_s = (curr_ts - prev_ts).total_seconds()
+        dt_ms = int(dt_s * 1000)
+        if dt_s <= 0:
+            dt_s = 0.25
+            dt_ms = 250
+        elif dt_s > 10:
+            dt_s = 0.25
+            dt_ms = 250
+
+        vel = calculate_velocity(
+            safe_mouse(prev, 'mouse_x'), safe_mouse(prev, 'mouse_y'),
+            safe_mouse(curr, 'mouse_x'), safe_mouse(curr, 'mouse_y'),
+            dt_s
+        )
+        velocities.append(vel)
+
+        if vel < 5:
+            idle_total_ms += dt_ms
+
+        if prev_velocity is not None:
+            acc = (vel - prev_velocity) / dt_s if dt_s > 0 else 0
+            accelerations.append(acc)
+        prev_velocity = vel
+
+        if safe_mouse(curr, 'mouse_y', 500) < 100 and vel > 200:
+            exit_intent_count += 1
+
+        dx = abs(safe_mouse(curr, 'mouse_x') - safe_mouse(prev, 'mouse_x'))
+        dy = abs(safe_mouse(curr, 'mouse_y') - safe_mouse(prev, 'mouse_y'))
+        is_static = dx == 0 and dy == 0
+        if is_static:
+            if dwell_start is None:
+                dwell_start = prev_ts
+            dwell_count += 1
+        else:
+            if dwell_start is not None and dwell_count > 0:
+                dwell_segments.append({
+                    'start': dwell_start,
+                    'end': prev_ts,
+                    'count': dwell_count
+                })
+                dwell_start = None
+                dwell_count = 0
+
+    velocity_avg = statistics.mean(velocities) if velocities else 0.0
+    velocity_max = max(velocities) if velocities else 0.0
+    velocity_std = statistics.stdev(velocities) if len(velocities) >= 2 else 0.0
+    acceleration_avg = statistics.mean(accelerations) if accelerations else 0.0
+    acceleration_max = max(accelerations) if accelerations else 0.0
+
+    if len(velocities) >= 5:
+        slope = np.polyfit(range(len(velocities)), velocities, 1)[0]
+        velocity_trend = 'decreasing' if slope < -15 else ('increasing' if slope > 15 else 'stable')
+    else:
+        velocity_trend = 'stable'
+
+    total_dwell_ms = sum(
+        int((s['end'] - s['start']).total_seconds() * 1000) for s in dwell_segments
+    )
+    total_dwell_segments = len(dwell_segments)
+
+    first_ts = min(datetime.fromisoformat(e['timestamp'].replace('Z', '+00:00')) for e in sorted_events)
+    last_ts = max(datetime.fromisoformat(e['timestamp'].replace('Z', '+00:00')) for e in sorted_events)
+    session_duration_s = (last_ts - first_ts).total_seconds()
+    click_frequency = sum(e.get('mouse_click_count', 0) for e in sorted_events) / max(session_duration_s, 1)
+
+    has_checkout = any(e.get('page') == 'checkout' for e in sorted_events)
+    total_dist = sum(
+        math.sqrt(
+            (safe_mouse(sorted_events[i], 'mouse_x') - safe_mouse(sorted_events[i - 1], 'mouse_x'))**2 +
+            (safe_mouse(sorted_events[i], 'mouse_y') - safe_mouse(sorted_events[i - 1], 'mouse_y'))**2
+        )
+        for i in range(1, len(sorted_events))
+    )
+
+    return {
+        'velocity_avg': round(velocity_avg, 2),
+        'velocity_max': round(velocity_max, 2),
+        'velocity_std': round(velocity_std, 2),
+        'acceleration_avg': round(acceleration_avg, 2),
+        'acceleration_max': round(acceleration_max, 2),
+        'idle_total_ms': idle_total_ms,
+        'distance_total': round(total_dist, 2),
+        'velocity_trend': velocity_trend,
+        'exit_intent_count': exit_intent_count,
+        'dwell_total_ms': total_dwell_ms,
+        'dwell_segments': total_dwell_segments,
+        'click_frequency': round(click_frequency, 4),
+        'heartbeat_count': len(heartbeats),
+        'session_duration_s': round(session_duration_s, 2),
+    }
+
+
+def compute_cart_features(events: List[Dict], gen: SessionGenerator) -> Dict:
+    heartbeats = [e for e in events if e.get('event_type') == 'heartbeat']
+    cart_delta = 0.0
+    shipping_switches = 0
+    product_removals = {}
+    product_additions = {}
+
+    if len(heartbeats) >= 2:
+        last = heartbeats[-1]
+        prev = heartbeats[-2]
+        cart_delta = last.get('cart_value', 0) - prev.get('cart_value', 0)
+        shipping_values = [e.get('shipping_option_selected', 'standard') for e in heartbeats]
+        shipping_switches = sum(1 for i in range(1, len(shipping_values)) if shipping_values[i] != shipping_values[i - 1])
+        for e in events:
+            if e.get('event_type') == 'add_to_cart':
+                pid = e.get('product_id', 'unknown')
+                product_additions[pid] = product_additions.get(pid, 0) + 1
+            if e.get('event_type') == 'remove_from_cart':
+                pid = e.get('product_id', 'unknown')
+                product_removals[pid] = product_removals.get(pid, 0) + 1
+
+    return {
+        'cart_delta': round(cart_delta, 2),
+        'product_removals': json.dumps(product_removals),
+        'product_additions': json.dumps(product_additions),
+        'shipping_switches': shipping_switches,
+    }
+
+
+def compute_funnel_features(events: List[Dict], gen: SessionGenerator) -> Dict:
+    pages = [e.get('page') for e in events if e.get('page')]
+    page_regression = sum(1 for i in range(1, len(pages)) if pages[i] == 'cart' and pages[i - 1] == 'checkout')
+
+    checkout_events = [e for e in events if e.get('page') == 'checkout']
+    hesitation_ms = 0
+    payment_switches = 0
+    if checkout_events:
+        sorted_ce = sorted(checkout_events, key=lambda e: e['timestamp'])
+        first = datetime.fromisoformat(sorted_ce[0]['timestamp'].replace('Z', '+00:00'))
+        last = datetime.fromisoformat(sorted_ce[-1]['timestamp'].replace('Z', '+00:00'))
+        hesitation_ms = int((last - first).total_seconds() * 1000)
+        pmethods = [e.get('payment_method_selected') for e in sorted_ce if e.get('payment_method_selected')]
+        payment_switches = sum(1 for i in range(1, len(pmethods)) if pmethods[i] != pmethods[i - 1])
+
+    return {
+        'page_regression_count': page_regression,
+        'payment_hesitation_ms': hesitation_ms,
+        'payment_method_switches': payment_switches,
+    }
+
+
+def compute_abandon_probability(features: Dict, cart_features: Dict, funnel_features: Dict,
+                                gen: SessionGenerator) -> float:
+    score = 0.0
+    weights = []
+
+    if features['velocity_trend'] == 'decreasing':
+        score += 0.25
+    weights.append(0.25)
+
+    idle_ratio = features['idle_total_ms'] / max(features['session_duration_s'] * 1000, 1)
+    if idle_ratio > 0.30:
+        score += 0.25
+    elif idle_ratio > 0.15:
+        score += 0.12
+    weights.append(0.25)
+
+    if funnel_features['page_regression_count'] >= 2:
+        score += 0.20
+    elif funnel_features['page_regression_count'] >= 1:
+        score += 0.10
+    weights.append(0.20)
+
+    if cart_features['shipping_switches'] >= 2:
+        score += 0.15
+    elif cart_features['shipping_switches'] >= 1:
+        score += 0.07
+    weights.append(0.15)
+
+    if features['exit_intent_count'] >= 2:
+        score += 0.10
+    elif features['exit_intent_count'] >= 1:
+        score += 0.05
+    weights.append(0.10)
+
+    if gen.cart_removes > gen.cart_adds and gen.cart_modifications > 0:
+        score += 0.05
+    weights.append(0.05)
+
+    noise = RNG.gauss(0, 0.08)
+    prob = score + noise
+    return max(0.0, min(1.0, prob))
+
+
+def session_has_terminal(events: List[Dict]) -> Optional[str]:
+    for e in events:
+        if e.get('event_type') in ('purchase', 'abandon'):
+            return e['event_type']
+    return None
+
+
+def generate_purchaser_session() -> SessionGenerator:
+    gen = SessionGenerator()
+    total_hb = RNG.randint(15, 40)
+    item = 0
+
+    cart_hb = RNG.randint(5, 15)
+    for i in range(cart_hb):
+        zone = 'cart_center' if i < cart_hb * 0.6 else 'cart_bottom'
+        mx, my = MousePath.random_point(zone)
+        gen.heartbeat(mx, my)
+        if gen.cart_items and RNG.random() < 0.05:
+            pid = gen.cart_items[0][0]
+            price = gen.cart_items[0][2]
+            cat = gen.cart_items[0][3]
+            gen.remove_from_cart(pid, price, cat)
+
+    gen.start_checkout()
+
+    checkout_hb = RNG.randint(8, 20)
+    for i in range(checkout_hb):
+        if i < checkout_hb * 0.5:
+            mx, my = MousePath.random_point('checkout_options')
+        else:
+            mx, my = MousePath.random_point('checkout_form')
+        gen.heartbeat(mx, my)
+        if RNG.random() < 0.08 and gen.shipping_switches < 1:
+            gen.toggle_shipping()
+
+    mx, my = MousePath.random_point('checkout_place')
+    gen.heartbeat(mx, my)
+    gen.purchase()
+    return gen
+
+
+def generate_abandoner_session() -> SessionGenerator:
+    gen = SessionGenerator()
+    total_hesitation = RNG.uniform(0.3, 0.9)
+
+    cart_hb = RNG.randint(8, 25)
+    for i in range(cart_hb):
+        if i < cart_hb * total_hesitation:
+            mx, my = MousePath.random_point('cart_center')
+        else:
+            mx, my = MousePath.random_point('cart_bottom')
+        gen.heartbeat(mx, my)
+
+        if RNG.random() < 0.08 and gen.cart_modifications < 3:
+            cat = weighted_choice(CATEGORIES, [1] * len(CATEGORIES))
+            if PROD_BY_CATEGORY[cat]:
+                prod = RNG.choice(PROD_BY_CATEGORY[cat])
+                gen.add_to_cart(prod)
+
+        if gen.cart_items and RNG.random() < 0.10 and gen.cart_removes < 2:
+            item = RNG.choice(gen.cart_items)
+            gen.remove_from_cart(item[0], item[2], item[3])
+
+    goes_to_checkout = RNG.random() < 0.70
+    if goes_to_checkout:
+        gen.start_checkout()
+        checkout_hb = RNG.randint(10, 30)
+        for i in range(checkout_hb):
+
+            if i < checkout_hb * total_hesitation:
+                mx, my = MousePath.random_point('checkout_options')
+            else:
+                mx, my = MousePath.random_point('checkout_form')
+            gen.heartbeat(mx, my)
+
+            if RNG.random() < 0.12 and gen.shipping_switches < 3:
+                if RNG.random() < 0.40:
+                    gen.toggle_delivery_mode()
+                else:
+                    gen.toggle_shipping()
+
+        has_regression = RNG.random() < 0.45
+        if has_regression and gen.page_regressions < 2:
+            gen.back_to_cart()
+            extra_cart_hb = RNG.randint(3, 8)
+            for _ in range(extra_cart_hb):
+                mx, my = MousePath.random_point('cart_center')
+                gen.heartbeat(mx, my)
+            gen.start_checkout()
+            extra_checkout_hb = RNG.randint(3, 8)
+            for _ in range(extra_checkout_hb):
+                mx, my = MousePath.random_point('checkout_form')
+                gen.heartbeat(mx, my)
+
+        exit_hb = RNG.randint(2, 5)
+        for _ in range(exit_hb):
+            mx, my = MousePath.random_point('exit_top_right')
+            gen.heartbeat(mx, my)
+            gen.exit_intent_count += 1
+            gen.mouse_click_count += 1
+
+        gen.abandon()
+    else:
+        exit_hb = RNG.randint(2, 4)
+        for _ in range(exit_hb):
+            mx, my = MousePath.random_point('exit_top_right')
+            gen.heartbeat(mx, my)
+            gen.exit_intent_count += 1
+        gen.abandon()
+
+    return gen
+
+
+def inject_anomaly_events(events: List[Dict], gen: SessionGenerator) -> List[Dict]:
+    if not events:
+        return events
+
+    anomaly_type = RNG.random()
+
+    if anomaly_type < 0.05:
+        idx = RNG.randint(1, len(events) - 1)
+        events[idx]['mouse_x'] = RNG.randint(2500, 4000)
+        events[idx]['mouse_y'] = RNG.randint(900, 2000)
+
+    if anomaly_type < 0.08 and any(e.get('event_type') == 'add_to_cart' for e in events):
+        add_events = [i for i, e in enumerate(events) if e.get('event_type') == 'add_to_cart']
+        if add_events:
+            idx = RNG.choice(add_events)
+            events[idx]['price'] = -abs(events[idx].get('price', 100))
+
+    if anomaly_type < 0.11 and len(events) > 2:
+        idx = RNG.randint(1, len(events) - 2)
+        events[idx]['mouse_x'] = 0
+        events[idx]['mouse_y'] = 0
+
+    if anomaly_type < 0.13 and len(events) > 3:
+        ref_ts = datetime.fromisoformat(events[0]['timestamp'].replace('Z', '+00:00'))
+        total_s = (datetime.fromisoformat(events[-1]['timestamp'].replace('Z', '+00:00')) - ref_ts).total_seconds()
+        bad_offset = total_s + RNG.randint(120, 600)
+        bad_ts = (ref_ts + timedelta(seconds=bad_offset)).isoformat().replace('+00:00', 'Z')
+        events[-2]['timestamp'] = bad_ts
+
+    if anomaly_type < 0.15 and len(events) > 5:
+        start = RNG.randint(2, len(events) - 4)
+        for i in range(start, min(start + 6, len(events))):
+            events[i]['mouse_x'] = events[start - 1].get('mouse_x', 500)
+            events[i]['mouse_y'] = events[start - 1].get('mouse_y', 350)
+
+    return events
+
+
+def generate_session() -> Tuple[List[Dict], SessionGenerator]:
+    is_abandon = RNG.random() < ABANDON_RATE_TARGET
+
+    if is_abandon:
+        gen = generate_abandoner_session()
+    else:
+        gen = generate_purchaser_session()
+
+    events = gen.events
+
+    terminal = session_has_terminal(events)
+    if terminal == 'purchase':
+        is_abandon = False
+        gen.abandon_reason = None
+        gen.payment_method = events[-1].get('payment_method', 'credit_card')
+    elif terminal == 'abandon':
+        is_abandon = True
+        gen.payment_method = None
+    elif is_abandon:
+        if events:
+            mx = events[-1].get('mouse_x', 500)
+            my = events[-1].get('mouse_y', 350)
+            gen.heartbeat(mx, my)
+            gen.abandon()
+            events = gen.events
+        else:
+            gen.abandon()
+            events = gen.events
+        is_abandon = True
+
+    features = compute_session_features(events)
+    cart_feat = compute_cart_features(events, gen)
+    funnel_feat = compute_funnel_features(events, gen)
+
+    if features is not None and terminal is None:
+        prob = compute_abandon_probability(features, cart_feat, funnel_feat, gen)
+        if prob > 0.50:
+            if not session_has_terminal(events):
+                if events:
+                    mx = events[-1].get('mouse_x', 500)
+                    my = events[-1].get('mouse_y', 350)
+                    gen.heartbeat(mx, my)
+                gen.abandon()
+                events = gen.events
+            is_abandon = True
+        else:
+            if not session_has_terminal(events):
+                if events:
+                    mx = events[-1].get('mouse_x', 500)
+                    my = events[-1].get('mouse_y', 350)
+                    gen.heartbeat(mx, my)
+                gen.purchase()
+                events = gen.events
+            is_abandon = False
+
+    events = inject_anomaly_events(events, gen)
+
+    gen.events = events
+    gen.abandon_reason = (events[-1].get('abandon_reason') if session_has_terminal(events) == 'abandon' else None)
+    gen.payment_method = (events[-1].get('payment_method') if session_has_terminal(events) == 'purchase' else None)
+
+    return events, gen
+
+
+RAW_DIR = os.path.join(os.path.dirname(__file__), 'raw')
+PROCESSED_DIR = os.path.join(os.path.dirname(__file__), 'processed')
+META_DIR = os.path.join(os.path.dirname(__file__), 'metadata')
+
+
+def write_raw_events(events: List[Dict], session_id: str):
+    base = RAW_DIR
+    for evt in events:
+        ts = evt['timestamp']
+        try:
+            dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+        except ValueError:
+            dt = datetime.now(timezone.utc)
+        date_path = dt.strftime('%Y/%m/%d')
+        dir_path = os.path.join(base, date_path)
+        os.makedirs(dir_path, exist_ok=True)
+        event_id = str(uuid.uuid4())[:8]
+        fname = f"{evt['event_type']}_{session_id}_{event_id}.json"
+        path = os.path.join(dir_path, fname)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(evt, f, ensure_ascii=False, default=str)
+
+
+def build_session_row(events: List[Dict], gen: SessionGenerator, idx: int) -> Dict:
+    features = compute_session_features(events)
+    cart_feat = compute_cart_features(events, gen)
+    funnel_feat = compute_funnel_features(events, gen)
+    is_abandon = 1 if session_has_terminal(events) == 'abandon' else 0
+
+    row = {
+        'session_id': gen.session_id,
+        'user_id': gen.user_id,
+        'device': gen.device,
+        'event_count': len(events),
+        'is_abandon_preset': int(gen.abandon_reason is not None),
+        'abandoned': is_abandon,
+        'abandon_reason': gen.abandon_reason or '',
+        'payment_method': gen.payment_method or '',
+        'has_checkout': int(any(e.get('page') == 'checkout' for e in events)),
+    }
+
+    if features:
+        row.update({
+            'velocity_avg': features['velocity_avg'],
+            'velocity_max': features['velocity_max'],
+            'velocity_std': features['velocity_std'],
+            'acceleration_avg': features['acceleration_avg'],
+            'acceleration_max': features['acceleration_max'],
+            'idle_total_ms': features['idle_total_ms'],
+            'distance_total': features['distance_total'],
+            'velocity_trend': features['velocity_trend'],
+            'exit_intent_count': features['exit_intent_count'],
+            'dwell_total_ms': features['dwell_total_ms'],
+            'dwell_segments': features['dwell_segments'],
+            'click_frequency': features['click_frequency'],
+            'session_duration_s': features['session_duration_s'],
+        })
+
+    row.update({
+        'cart_delta': cart_feat['cart_delta'],
+        'product_removals': cart_feat['product_removals'],
+        'product_additions': cart_feat['product_additions'],
+    })
+
+    row.update({
+        'shipping_switches': cart_feat['shipping_switches'],
+        'page_regression_count': funnel_feat['page_regression_count'],
+        'payment_hesitation_ms': funnel_feat['payment_hesitation_ms'],
+        'payment_method_switches': funnel_feat['payment_method_switches'],
+    })
+
+    row['index'] = idx
+    return row
+
+
+def main():
+    os.makedirs(RAW_DIR, exist_ok=True)
+    os.makedirs(PROCESSED_DIR, exist_ok=True)
+    os.makedirs(META_DIR, exist_ok=True)
+
+    all_rows = []
+    stats = defaultdict(int)
+    total_events = 0
+    total_abandons = 0
+
+    print(f"Generando {SESSION_COUNT} sesiones...")
+
+    for i in range(SESSION_COUNT):
+        if (i + 1) % 500 == 0:
+            pct = (i + 1) / SESSION_COUNT * 100
+            print(f"  {i+1}/{SESSION_COUNT} ({pct:.0f}%)")
+
+        events, gen = generate_session()
+        write_raw_events(events, gen.session_id)
+        row = build_session_row(events, gen, i)
+        all_rows.append(row)
+
+        total_events += len(events)
+        term = session_has_terminal(events)
+        if term == 'abandon':
+            total_abandons += 1
+            stats['abandon'] += 1
+        elif term == 'purchase':
+            stats['purchase'] += 1
+        else:
+            stats['unknown'] += 1
+
+        heartbeats = sum(1 for e in events if e.get('event_type') == 'heartbeat')
+        stats['total_heartbeats'] += heartbeats
+        stats['total_adds'] += sum(1 for e in events if e.get('event_type') == 'add_to_cart')
+        stats['total_removes'] += sum(1 for e in events if e.get('event_type') == 'remove_from_cart')
+        stats['total_checkouts'] += sum(1 for e in events if e.get('event_type') == 'start_checkout')
+        stats['total_abandon_events'] += sum(1 for e in events if e.get('event_type') == 'abandon')
+        stats['total_purchases'] += sum(1 for e in events if e.get('event_type') == 'purchase')
+
+    df = pl.DataFrame(all_rows)
+    parquet_path = os.path.join(PROCESSED_DIR, 'sessions.parquet')
+    df.write_parquet(parquet_path)
+    print(f"\nParquet escrito: {parquet_path}")
+    print(f"  Filas: {df.shape[0]}, Columnas: {df.shape[1]}")
+
+    actual_rate = total_abandons / SESSION_COUNT * 100
+    avg_events = total_events / SESSION_COUNT
+    avg_heartbeats = stats['total_heartbeats'] / SESSION_COUNT
+
+    report = {
+        'session_count': SESSION_COUNT,
+        'total_events': total_events,
+        'avg_events_per_session': round(avg_events, 1),
+        'avg_heartbeats_per_session': round(avg_heartbeats, 1),
+        'abandon_count': stats['abandon'],
+        'purchase_count': stats['purchase'],
+        'abandon_rate_pct': round(actual_rate, 2),
+        'abandon_reason_distribution': {},
+        'feature_stats': {},
+    }
+
+    if stats['abandon'] > 0:
+        abandon_df = df.filter(pl.col('abandoned') == 1)
+        reason_counts = abandon_df['abandon_reason'].value_counts()
+        for row in reason_counts.iter_rows():
+            report['abandon_reason_distribution'][str(row[0])] = int(row[1])
+
+    numeric_cols = [s for s in df.schema if df[s].dtype in (pl.Float64, pl.Int64, pl.Float32, pl.Int32)]
+    for col in numeric_cols:
+        try:
+            vals = df[col].drop_nulls()
+            if len(vals) > 0:
+                report['feature_stats'][col] = {
+                    'mean': round(float(vals.mean()), 2),
+                    'std': round(float(vals.std()), 2),
+                    'min': round(float(vals.min()), 2),
+                    'max': round(float(vals.max()), 2),
+                }
+        except Exception:
+            pass
+
+    report_path = os.path.join(META_DIR, 'generation_report.json')
+    with open(report_path, 'w', encoding='utf-8') as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+
+    print(f"\nReporte: {report_path}")
+    print(f"  Eventos totales: {total_events}")
+    print(f"  Promedio eventos/sesion: {avg_events:.1f}")
+    print(f"  Promedio heartbeats/sesion: {avg_heartbeats:.1f}")
+    print(f"  Abandonos: {stats['abandon']} ({actual_rate:.1f}%)")
+    print(f"  Purchases: {stats['purchase']}")
+    print(f"  Add_to_cart: {stats['total_adds']}")
+    print(f"  Remove_from_cart: {stats['total_removes']}")
+    print(f"  Start_checkout: {stats['total_checkouts']}")
+    print(f"  Abandon events: {stats['total_abandon_events']}")
+    print(f"  Purchase events: {stats['total_purchases']}")
+
+
+if __name__ == '__main__':
+    main()

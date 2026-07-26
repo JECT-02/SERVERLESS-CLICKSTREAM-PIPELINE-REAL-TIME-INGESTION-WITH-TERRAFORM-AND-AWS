@@ -1,0 +1,151 @@
+{
+  "session_count": 5000,
+  "total_events": 187478,
+  "avg_events_per_session": 37.5,
+  "avg_heartbeats_per_session": 33.5,
+  "abandon_count": 3465,
+  "purchase_count": 1535,
+  "abandon_rate_pct": 69.3,
+  "abandon_reason_distribution": {
+    "just_browsing": 260,
+    "slow_delivery": 556,
+    "extra_costs": 1064,
+    "payment_security": 354,
+    "browsing": 611,
+    "complex_checkout": 620
+  },
+  "feature_stats": {
+    "event_count": {
+      "mean": 37.5,
+      "std": 14.94,
+      "min": 11.0,
+      "max": 78.0
+    },
+    "is_abandon_preset": {
+      "mean": 0.69,
+      "std": 0.46,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "abandoned": {
+      "mean": 0.69,
+      "std": 0.46,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "has_checkout": {
+      "mean": 0.79,
+      "std": 0.41,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "velocity_avg": {
+      "mean": 1213.99,
+      "std": 192.83,
+      "min": 458.98,
+      "max": 2888.3
+    },
+    "velocity_max": {
+      "mean": 4790.79,
+      "std": 2012.69,
+      "min": 1432.68,
+      "max": 16500.07
+    },
+    "velocity_std": {
+      "mean": 1015.1,
+      "std": 432.77,
+      "min": 358.37,
+      "max": 4773.9
+    },
+    "acceleration_avg": {
+      "mean": 109.2,
+      "std": 283.34,
+      "min": -2058.54,
+      "max": 3667.66
+    },
+    "acceleration_max": {
+      "mean": 14804.84,
+      "std": 7610.94,
+      "min": 2070.3,
+      "max": 55106.16
+    },
+    "idle_total_ms": {
+      "mean": 239.64,
+      "std": 602.64,
+      "min": 0.0,
+      "max": 3269.0
+    },
+    "distance_total": {
+      "mean": 10725.7,
+      "std": 4429.69,
+      "min": 1978.21,
+      "max": 27476.38
+    },
+    "exit_intent_count": {
+      "mean": 1.47,
+      "std": 1.25,
+      "min": 0.0,
+      "max": 6.0
+    },
+    "dwell_total_ms": {
+      "mean": 213.44,
+      "std": 584.82,
+      "min": 0.0,
+      "max": 3269.0
+    },
+    "dwell_segments": {
+      "mean": 0.12,
+      "std": 0.33,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "click_frequency": {
+      "mean": 5.91,
+      "std": 4.35,
+      "min": 0.0,
+      "max": 21.06
+    },
+    "session_duration_s": {
+      "mean": 59.3,
+      "std": 130.14,
+      "min": 4.17,
+      "max": 622.72
+    },
+    "cart_delta": {
+      "mean": 0.0,
+      "std": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "shipping_switches": {
+      "mean": 0.78,
+      "std": 0.83,
+      "min": 0.0,
+      "max": 3.0
+    },
+    "page_regression_count": {
+      "mean": 0.22,
+      "std": 0.42,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "payment_hesitation_ms": {
+      "mean": 43244.49,
+      "std": 116639.0,
+      "min": 0.0,
+      "max": 615300.0
+    },
+    "payment_method_switches": {
+      "mean": 0.0,
+      "std": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "index": {
+      "mean": 2499.5,
+      "std": 1443.52,
+      "min": 0.0,
+      "max": 4999.0
+    }
+  }
+}

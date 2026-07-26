@@ -61,6 +61,12 @@ venv/
 lambda_package.zip
 **/lambda_package.zip
 
+# Generated data
+data/raw/
+
+# ML models
+data/models/
+
 # Test artifacts
 *response.json
 payload.json
