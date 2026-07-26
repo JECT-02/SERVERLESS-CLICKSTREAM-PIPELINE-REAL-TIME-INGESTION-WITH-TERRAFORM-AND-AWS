@@ -81,3 +81,5 @@ lambda/package/
 *.swp
 *.swo
 *~
+
+.pytest_cache

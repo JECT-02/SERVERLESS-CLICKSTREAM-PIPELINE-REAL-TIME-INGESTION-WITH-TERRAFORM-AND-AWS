@@ -15,7 +15,7 @@ Generador de sesiones de clickstream con comportamiento realista basado en estud
 | Componente | Descripcion |
 |------------|-------------|
 | `MousePath` | Genera trayectorias de mouse por zonas (cart, checkout, exit). Bezier con ruido para abandoners, lineal para purchasers |
-| `SessionGenerator` | Maquina de estados: cart heartbeats → add/remove → start_checkout → shipping toggles → abandon/purchase |
+| `SessionGenerator` | Maquina de estados: cart heartbeats -> add/remove -> start_checkout -> shipping toggles -> abandon/purchase |
 | `compute_session_features` | Calcula features identicas a `features.py`: velocity, idle, acceleration, dwell, exit intent |
 | `inject_anomaly_events` | Anade outliers (5%), precios negativos (3%), mouse en 0,0 (3%), timestamps desordenados (2%) |
 
@@ -67,7 +67,22 @@ Ruido gaussiano N(0, 0.08). Threshold 0.50. Abandon rate resultante: **69.3%** (
 `abandoned=0`: 1,535 sesiones (30.7%)
 
 ### Bugs corregidos durante generacion
+1. **Timestamp anomaly usaba `now()` en vez de session base** -> causaba session_duration_s de 8+ horas. Corregido a usar `ref_ts + session_duration + 2-10min`.
 
-1. **Timestamp anomaly usaba `now()` en vez de session base** → causaba session_duration_s de 8+ horas. Corregido a usar `ref_ts + session_duration + 2-10min`.
-2. **dt_s sin capping** → idle_total_ms acumulaba 29M ms. Corregido: `dt_s > 10s → 0.25s`.
-3. **mouse_x/mouse_y = None en anomalias** → TypeError en calculo de features. Corregido: usar 0 en vez de None + `safe_mouse()`.
+2. **dt_s sin capping** -> idle_total_ms acumulaba 29M ms. Corregido: `dt_s > 10s` -> `0.25s`.
+
+3. **mouse_x/mouse_y = None en anomalias** -> TypeError en calculo de features. Corregido: usar 0 en vez de None + `safe_mouse()`.
+### Carga a S3 (Floci)
+
+Los datos sinteticos se subieron al bucket `s3://clickstream-bucket` en Floci via `scripts/upload_fast.py` y `aws s3 cp`.
+
+| Ruta S3 | Formato | Eventos | Tamano |
+|---------|---------|---------|--------|
+| `raw/2026/07/23/all.ndjson` | NDJSON | 90,255 | ~43 MB |
+| `raw/2026/07/24/all.ndjson` | NDJSON | 110,965 | ~49 MB |
+| `raw/2026/07/25/all.ndjson` | NDJSON | 111,341 | ~48 MB |
+| `raw/2026/07/26/all.ndjson` | NDJSON | 20,237 | ~8.8 MB |
+| `raw/metadata/generation_report.json` | JSON | 1 | ~3 KB |
+| `processed/sessions.parquet` | Parquet | 5,000 filas | ~422 KB |
+
+Total: 332,798 eventos en 4 archivos NDJSON diarios. El formato NDJSON permite lectura directa con Polars via `pl.scan_ndjson()`.
