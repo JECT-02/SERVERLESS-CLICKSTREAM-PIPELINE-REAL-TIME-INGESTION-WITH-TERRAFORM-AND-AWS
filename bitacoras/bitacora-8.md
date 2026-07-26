@@ -71,16 +71,3 @@ Ruido gaussiano N(0, 0.08). Threshold 0.50. Abandon rate resultante: **69.3%** (
 1. **Timestamp anomaly usaba `now()` en vez de session base** → causaba session_duration_s de 8+ horas. Corregido a usar `ref_ts + session_duration + 2-10min`.
 2. **dt_s sin capping** → idle_total_ms acumulaba 29M ms. Corregido: `dt_s > 10s → 0.25s`.
 3. **mouse_x/mouse_y = None en anomalias** → TypeError en calculo de features. Corregido: usar 0 en vez de None + `safe_mouse()`.
-
----
-
-## Commits
-```
-(commit realizado a continuacion)
-```
-
-Archivos:
-- `data/generate_sessions.py` - generador completo
-- `.gitignore` - excluye `data/raw/` y `data/models/`
-- `data/processed/sessions.parquet` - dataset para entrenamiento
-- `data/metadata/generation_report.json` - reporte de generacion
