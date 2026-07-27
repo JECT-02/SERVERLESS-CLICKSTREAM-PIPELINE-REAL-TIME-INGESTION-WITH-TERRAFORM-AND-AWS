@@ -63,6 +63,8 @@ lambda_package.zip
 
 # Generated data
 data/raw/
+data/processed/
+data/metadata/
 
 # ML models
 data/models/
