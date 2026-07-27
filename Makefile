@@ -122,6 +122,9 @@ train:
 train-local:
 	cd $(ML_DIR) && python train.py --local
 
+upload-model:
+	python scripts/upload_model.py
+
 # Frontend
 store:
 	cmd /c start "" "$(FRONTEND_DIR)/index.html"
