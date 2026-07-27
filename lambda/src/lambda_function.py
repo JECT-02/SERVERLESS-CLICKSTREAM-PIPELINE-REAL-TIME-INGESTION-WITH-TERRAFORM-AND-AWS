@@ -160,11 +160,20 @@ def store_session_state(event_data: Dict[str, Any], s3_key: str) -> None:
     table.put_item(Item=item)
 
 
+SESSION_WINDOW_SECONDS = 180
+
+
 def get_session_history(session_id: str) -> Dict[str, Any]:
+    now_ts = datetime.now(timezone.utc).timestamp()
+    cutoff = Decimal(str(now_ts - SESSION_WINDOW_SECONDS))
     response = table.query(
-        KeyConditionExpression='session_id = :sid',
-        ExpressionAttributeValues={':sid': session_id},
-        ScanIndexForward=True
+        KeyConditionExpression='session_id = :sid AND #ts >= :cutoff',
+        ExpressionAttributeNames={'#ts': 'timestamp'},
+        ExpressionAttributeValues={
+            ':sid': session_id,
+            ':cutoff': cutoff,
+        },
+        ScanIndexForward=False,
     )
     return {
         'items': response.get('Items', []),
