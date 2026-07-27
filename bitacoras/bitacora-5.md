@@ -1,5 +1,4 @@
 # Bitacora 5 - Tests Unitarios (41 features) y Tests de Integracion en Floci (9)
-**Fecha:** 2026-07-25
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 
 ---

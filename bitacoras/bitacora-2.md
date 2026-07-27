@@ -1,5 +1,4 @@
 # Bitacora 2 - Conexion Frontend a API Gateway
-**Fecha:** 2026-07-25
 **Version:** 1.0
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 

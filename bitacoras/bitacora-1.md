@@ -1,5 +1,4 @@
 # Bitacora 1 - Estado de Implementacion
-**Fecha:** 2026-07-24  
 **Version:** 1.0  
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 

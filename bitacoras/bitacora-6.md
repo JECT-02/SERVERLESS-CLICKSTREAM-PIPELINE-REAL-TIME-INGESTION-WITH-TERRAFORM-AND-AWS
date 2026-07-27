@@ -1,5 +1,4 @@
 # Bitacora 6 - Conexion y Almacenamiento en DynamoDB como Cache de Sesion
-**Fecha:** 2026-07-25
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 
 ---

@@ -1,5 +1,4 @@
 # Bitacora 3 - Integracion API Gateway con Lambda
-**Fecha:** 2026-07-25
 **Version:** 1.0
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 

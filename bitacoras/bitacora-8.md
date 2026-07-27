@@ -1,5 +1,4 @@
 # Bitacora 8 - Generacion de Data Sintetica Realista
-**Fecha:** 2026-07-25
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 
 ---
