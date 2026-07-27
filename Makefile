@@ -2,7 +2,7 @@
         deploy deploy-aws plan plan-aws destroy destroy-aws tf-init tf-init-aws \
         lambda-package lambda-test lambda-lint \
         ecs-build ecs-test ecs-run-local \
-        train train-local \
+        train train-local upload-model upload-raw pipeline \
         frontend-test frontend-install \
         test lint format clean install
 
@@ -46,6 +46,9 @@ help:
 	@echo "ML Training:"
 	@echo "  make train           - Entrena modelo y sube a S3"
 	@echo "  make train-local     - Entrena modelo localmente (sin S3)"
+	@echo "  make upload-model    - Sube modelo local a S3"
+	@echo "  make upload-raw      - Sube raw data local a S3"
+	@echo "  make pipeline        - Flujo completo: S3 raw -> pipeline -> modelo -> S3"
 	@echo ""
 	@echo "Frontend:"
 	@echo "  make store           - Abre la tienda en el navegador"
@@ -122,7 +125,16 @@ train:
 train-local:
 	cd $(ML_DIR) && python train.py --local
 
+upload-raw:
+	python scripts/upload_raw.py
+
 upload-model:
+	python scripts/upload_model.py
+
+pipeline: upload-raw
+	python scripts/download_from_s3.py
+	python batch/polars_process.py
+	python ml/training/train.py
 	python scripts/upload_model.py
 
 # Frontend

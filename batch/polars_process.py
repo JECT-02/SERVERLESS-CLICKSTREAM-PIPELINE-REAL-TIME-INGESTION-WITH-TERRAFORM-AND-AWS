@@ -12,6 +12,9 @@ EXIT_INTENT_VELOCITY_THRESHOLD = 200.0
 HEARTBEAT_INTERVAL_S = 0.25
 
 
+BRONZE_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+
 def bronze_layer():
     df = pl.read_ndjson(RAW_PATH, infer_schema_length=None)
 
