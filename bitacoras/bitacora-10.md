@@ -1,7 +1,6 @@
 # Bitacora 10 - Subida de Modelo a S3
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 
----
 
 ## Cambios Realizados
 

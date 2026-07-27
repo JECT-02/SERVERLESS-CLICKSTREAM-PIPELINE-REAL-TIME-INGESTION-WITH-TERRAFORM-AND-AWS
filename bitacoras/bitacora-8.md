@@ -1,7 +1,6 @@
 # Bitacora 8 - Generacion de Data Sintetica Realista
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 
----
 
 ## Cambios Realizados
 

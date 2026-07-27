@@ -1,7 +1,6 @@
 # Bitacora 9 - Pipeline de Procesamiento y Entrenamiento de Modelo
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 
----
 
 ## Cambios Realizados
 

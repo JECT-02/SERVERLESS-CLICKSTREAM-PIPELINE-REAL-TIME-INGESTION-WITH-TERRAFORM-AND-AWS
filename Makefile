@@ -16,7 +16,7 @@ ML_DIR = ml/training
 FRONTEND_DIR = frontend
 
 help:
-	@echo "=== Clickstream Pipeline - Comandos Disponibles ==="
+	@echo "Clickstream Pipeline - Comandos Disponibles"
 	@echo ""
 	@echo "Entorno Local (Floci):"
 	@echo "  make floci-up        - Inicia Floci en puerto 4566"
@@ -34,9 +34,9 @@ help:
 	@echo "  make tf-init-aws     - Inicializa Terraform (AWS)"
 	@echo ""
 	@echo "Lambda:"
-	@echo "  make lambda-package  - Empaqueta código Lambda para deploy"
+	@echo "  make lambda-package  - Empaqueta codigo Lambda para deploy"
 	@echo "  make lambda-test     - Ejecuta tests unitarios Lambda"
-	@echo "  make lambda-lint     - Lint código Lambda (ruff/flake8)"
+	@echo "  make lambda-lint     - Lint codigo Lambda (ruff/flake8)"
 	@echo ""
 	@echo "ECS Inference:"
 	@echo "  make ecs-build       - Construye imagen Docker ECS"
@@ -58,7 +58,7 @@ help:
 	@echo "Utilidades:"
 	@echo "  make test            - Ejecuta todos los tests (pytest)"
 	@echo "  make lint            - Lint todo el proyecto"
-	@echo "  make format          - Formatea código (black/ruff)"
+	@echo "  make format          - Formatea codigo (black/ruff)"
 	@echo "  make clean           - Limpia artefactos build"
 	@echo "  make install         - Instala dependencias Python"
 

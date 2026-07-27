@@ -2,8 +2,6 @@
 **Version:** 1.0  
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 
----
-
 ## Componentes Implementados
 
 ### 1. Frontend (`frontend/`)
@@ -88,8 +86,6 @@ make frontend-install
 make clean         # Limpia artefactos
 ```
 
----
-
 ## Flujo de Datos Actual
 
 ```
@@ -104,8 +100,6 @@ API Gateway -> Lambda -> S3 (raw/) + DynamoDB (session) -> ECS Fargate (/predict
 Retention modal si trigger_retention
 ```
 
----
-
 ## Componentes No Implementados
 
 | Componente | Estado |
@@ -118,8 +112,6 @@ Retention modal si trigger_retention
 | Tests Integracion E2E | Vacio |
 | CI/CD GitHub Actions | No |
 
----
-
 ## Comandos de Verificacion
 
 ```bash
@@ -129,7 +121,7 @@ make frontend-test
 make store
 ```
 
----
+
 
 ## Decisiones Tecnicas
 
@@ -137,4 +129,4 @@ make store
 2. **Buffer en catalogo**: reduce ruido, solo eventos relevantes llegan a API
 3. **250ms heartbeat**: balance latencia/costo; configurable via Terraform
 4. **Terraform modular**: mismo codigo para Floci y AWS (cambia provider endpoint)
-5. **Config dinámica**: `config.js` generado en deploy -> cero hardcodeo en prod
+5. **Config dinamica**: `config.js` generado en deploy -> cero hardcodeo en prod

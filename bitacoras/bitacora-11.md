@@ -1,7 +1,6 @@
 # Bitacora 11 - Pipeline Automatizado S3 a Modelo
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 
----
 
 ## Cambios Realizados
 

@@ -123,7 +123,10 @@ variable "ecs_container_port" {
 
 variable "ecs_env_vars" {
   type        = map(string)
-  default     = {}
+  default     = {
+    S3_BUCKET   = "clickstream-bucket"
+    MODEL_S3_KEY = "models/modelo_propension.pkl"
+  }
 }
 
 variable "ecs_service_name" {

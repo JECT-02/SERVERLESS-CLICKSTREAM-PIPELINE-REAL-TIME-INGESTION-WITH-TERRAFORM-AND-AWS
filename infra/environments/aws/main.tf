@@ -66,7 +66,10 @@ module "ecs_task_definition" {
   cpu                 = var.ecs_cpu
   memory              = var.ecs_memory
   container_port      = var.ecs_container_port
-  env_vars            = var.ecs_env_vars
+  env_vars            = merge(var.ecs_env_vars, {
+    S3_BUCKET   = var.bucket_name
+    MODEL_S3_KEY = "models/modelo_propension.pkl"
+  })
   task_execution_role = module.iam_roles.ecs_task_execution_role_arn
   tags                = local.common_tags
 }

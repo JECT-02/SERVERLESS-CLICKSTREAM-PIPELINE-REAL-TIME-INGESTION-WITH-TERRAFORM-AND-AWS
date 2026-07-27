@@ -1,8 +1,6 @@
 # Bitacora 6 - Conexion y Almacenamiento en DynamoDB como Cache de Sesion
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 
----
-
 ## Cambios Realizados
 
 ### 1. Conexion dedicada a DynamoDB
@@ -56,8 +54,6 @@ def connect_dynamodb() -> object:
 
 Completado con 4 outputs: `table_name`, `table_arn`, `table_hash_key`, `table_range_key`.
 
----
-
 ## Tests
 
 ### Unit tests Lambda: 53/53 pasando (12 handler + 41 features)
@@ -83,8 +79,6 @@ Nuevos tests en `test_e2e_flow.py`:
 | `test_dynamodb_ttl_is_future_timestamp` | ttl > now + 3000s |
 | `test_dynamodb_multiple_heartbeats_per_session` | 3 heartbeats = 3 items, timestamps en orden ascendente |
 
----
-
 ## Commit Realizado
 ```
 2f2839b feat: add dedicated DynamoDB connection, expand session storage to all event fields
@@ -96,8 +90,6 @@ Archivos incluidos:
 - `tests/integration/test_e2e_flow.py` - 4 nuevos tests integracion DynamoDB
 - `infra/modules/dynamodb-table/outputs.tf` - outputs completos
 - `bitacoras/bitacora-5.md` - bitacora anterior
-
----
 
 ## Pendiente para Proximas Fases
 | Componente | Estado |

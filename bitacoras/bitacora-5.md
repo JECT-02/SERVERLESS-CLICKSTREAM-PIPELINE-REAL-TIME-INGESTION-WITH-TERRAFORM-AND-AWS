@@ -1,8 +1,6 @@
 # Bitacora 5 - Tests Unitarios (41 features) y Tests de Integracion en Floci (9)
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 
----
-
 ## Cambios Realizados
 
 ### 1. Tests unitarios de features (41 tests)
@@ -53,8 +51,6 @@ Lambda construia `heartbeats` solo con `mouse_x`, `mouse_y`, `timestamp`. Las fu
 
 **Fix:** `Decimal(str(dt.timestamp()))` preserva milisegundos, eliminando colisiones.
 
----
-
 ## Resultados
 
 ### Unit tests Lambda
@@ -78,8 +74,6 @@ POST /events (heartbeat x4)
   -> Responde {"abandon_probability": 0.0, "trigger_retention": false}
 ```
 
----
-
 ## Commit Realizado
 ```
 2170147 test: add feature unit tests (41) and Floci integration tests (9)
@@ -93,8 +87,6 @@ Archivos incluidos:
 - `tests/integration/test_e2e_flow.py` - 9 tests contra Floci
 - `frontend/config.js` - regenerado por terraform
 - `infra/modules/iam-roles/main.tf` - ajuste menor
-
----
 
 ## Pendiente para Proximas Fases
 | Componente | Estado |

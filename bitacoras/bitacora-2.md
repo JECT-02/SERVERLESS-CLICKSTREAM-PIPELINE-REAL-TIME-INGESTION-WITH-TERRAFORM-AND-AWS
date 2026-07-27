@@ -2,8 +2,6 @@
 **Version:** 1.0
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 
----
-
 ## Implementacion: Envio de Eventos desde Frontend a API Gateway
 
 ### Arquitectura de Comunicacion

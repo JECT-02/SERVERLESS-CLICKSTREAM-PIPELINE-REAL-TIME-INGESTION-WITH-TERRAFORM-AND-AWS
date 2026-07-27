@@ -2,7 +2,6 @@
 **Version:** 1.0
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 
----
 
 ## Implementacion: Conexion API Gateway a Lambda
 

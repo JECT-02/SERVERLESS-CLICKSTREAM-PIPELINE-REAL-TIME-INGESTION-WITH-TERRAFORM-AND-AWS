@@ -2,8 +2,6 @@
 **Version:** 2.0
 **Proyecto:** Serverless Clickstream Pipeline - Real-Time Event Ingestion with Terraform & Polars
 
----
-
 ## Fallos Detectados y Corregidos
 
 ### 1. S3 Bucket DNS en Floci (virtual-hosted style)
@@ -33,8 +31,6 @@
 ### 7. `__pycache__` en Lambda zip
 **Problema:** Zip incluia `__pycache__/` que aumentaba tamaño y podia causar errores de importacion.
 **Solucion:** Zip creado excluyendo `__pycache__` con `Compress-Archive -Path *.py`.
-
----
 
 ## Verificacion en Floci
 
@@ -68,8 +64,6 @@ POST /events (heartbeat)
 - Lambda: 7/7 pasando
 - Frontend: 22/22 pasando (de sesion previa)
 
----
-
 ## Commit Realizado
 ```
 97b344d fix: resolve Floci S3 path-style, DynamoDB Decimal, Lambda networking, and Windows heredoc
@@ -81,8 +75,6 @@ Archivos incluidos:
 - `infra/environments/local/variables.tf` - AWS_ENDPOINT_URL removido de Lambda env
 - `lambda/src/lambda_function.py` - Decimal support, timestamp fix, mejor error handling
 - `lambda/src/features.py` - parse_timestamp maneja Decimal/epoch seconds
-
----
 
 ## Pendiente para Proximas Fases
 
