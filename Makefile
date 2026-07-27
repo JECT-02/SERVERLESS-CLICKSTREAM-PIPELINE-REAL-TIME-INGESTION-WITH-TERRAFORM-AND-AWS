@@ -47,11 +47,11 @@ help:
 	@echo "  make ecs-run-local   - Ejecuta servidor inference localmente (sin Docker)"
 	@echo ""
 	@echo "ML Training:"
+	@echo "  make generate        - Genera datos sinteticos (NDJSON)"
 	@echo "  make train           - Entrena modelo y sube a S3"
 	@echo "  make train-local     - Entrena modelo localmente (sin S3)"
 	@echo "  make upload-model    - Sube modelo local a S3"
-	@echo "  make upload-raw      - Sube raw data local a S3"
-	@echo "  make pipeline        - Flujo completo: S3 raw -> pipeline -> modelo -> S3"
+	@echo "  make pipeline        - Flujo completo: generate -> polars -> train -> upload"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make load-test       - Ejecuta prueba de carga (scripts/load_test.py)"
@@ -132,8 +132,17 @@ ecs-test:
 ecs-run-local:
 	cd $(ECS_DIR)/app && python main.py
 
+# Data Generation
+DATA_DIR = data
+
+generate:
+	cd $(DATA_DIR) && python generate_sessions.py
+
+polars-process:
+	python batch/polars_process.py
+
 # ML Training
-train:
+train: generate polars-process
 	cd $(ML_DIR) && python train.py
 
 train-local:
@@ -145,10 +154,8 @@ upload-raw:
 upload-model:
 	python scripts/upload_model.py
 
-pipeline: upload-raw
-	python scripts/download_from_s3.py
-	python batch/polars_process.py
-	python ml/training/train.py
+pipeline: clean-data generate polars-process
+	cd $(ML_DIR) && python train.py
 	python scripts/upload_model.py
 
 load-test:
@@ -176,7 +183,10 @@ lint:
 format:
 	ruff format . || black .
 
-clean:
+clean-data:
+	powershell -NoProfile -Command "Remove-Item -Recurse -Force data/raw, data/processed, data/metadata -ErrorAction SilentlyContinue; Write-Host 'Data cleaned'"
+
+clean: clean-data
 	powershell -NoProfile -File scripts/clean.ps1
 
 install:

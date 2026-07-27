@@ -1,13 +1,13 @@
 {
   "precision": 1.0,
-  "recall": 0.9971509971509972,
-  "f1_score": 0.9985734664764622,
-  "auc_roc": 0.9999856593816325,
-  "auc_pr": 0.9999939239166447,
-  "true_negatives": 298,
+  "recall": 1.0,
+  "f1_score": 1.0,
+  "auc_roc": 1.0,
+  "auc_pr": 1.0,
+  "true_negatives": 305,
   "false_positives": 0,
-  "false_negatives": 2,
-  "true_positives": 700,
+  "false_negatives": 0,
+  "true_positives": 695,
   "specificity": 1.0,
   "train_auc_roc": 1.0,
   "train_auc_pr": 1.0,
@@ -45,9 +45,9 @@
   "n_train": 4000,
   "n_test": 1000,
   "class_distribution": {
-    "train_neg": 1192,
-    "train_pos": 2808,
-    "test_neg": 298,
-    "test_pos": 702
+    "train_neg": 1219,
+    "train_pos": 2781,
+    "test_neg": 305,
+    "test_pos": 695
   }
 }
