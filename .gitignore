@@ -61,13 +61,15 @@ venv/
 lambda_package.zip
 **/lambda_package.zip
 
-# Generated data
-data/raw/
-data/processed/
-data/metadata/
+# Generated data (commented: included in commit because this is a demo project)
+# In a real production project, these should NEVER be committed
+#data/raw/
+#data/processed/
+#data/metadata/
 
-# ML models
-data/models/
+# ML models (commented: included in commit because this is a demo project)
+# In a real production project, models should be stored in S3, not in git
+#data/models/
 
 # Test artifacts
 *response.json
