@@ -98,18 +98,18 @@ module "ecs_service" {
 }
 
 module "lambda_function" {
-  source                  = "../../modules/lambda-function"
-  function_name           = var.lambda_function_name
-  handler                 = var.lambda_handler
-  runtime                 = var.lambda_runtime
-  timeout                 = var.lambda_timeout
-  memory_size             = var.lambda_memory
-  env_vars                = var.lambda_env_vars
-  role_arn                = module.iam_roles.lambda_execution_role_arn
-  source_code_filename    = var.lambda_source_code_filename
-  source_code_hash        = var.lambda_source_code_hash
-  api_gateway_execution_arn = module.api_gateway.execution_arn
-  tags                    = local.common_tags
+  source                    = "../../modules/lambda-function"
+  function_name             = var.lambda_function_name
+  handler                   = var.lambda_handler
+  runtime                   = var.lambda_runtime
+  timeout                   = var.lambda_timeout
+  memory_size               = var.lambda_memory
+  environment_variables     = merge(var.lambda_env_vars, {
+    ECS_ENDPOINT = "http://${module.alb.alb_dns_name}"
+  })
+  role_arn                  = module.iam_roles.lambda_execution_role_arn
+  source_code_filename      = var.lambda_source_code_filename
+  source_code_hash          = var.lambda_source_code_hash
 }
 
 module "api_gateway" {
@@ -119,6 +119,14 @@ module "api_gateway" {
   lambda_invoke_arn  = module.lambda_function.invoke_arn
   stage_name       = "prod"
   tags             = local.common_tags
+}
+
+resource "aws_lambda_permission" "api_gateway_invoke" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambda_function.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = module.api_gateway.execution_arn
 }
 
 resource "null_resource" "frontend_config" {

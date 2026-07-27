@@ -160,7 +160,7 @@ def store_session_state(event_data: Dict[str, Any], s3_key: str) -> None:
     table.put_item(Item=item)
 
 
-SESSION_WINDOW_SECONDS = 180
+SESSION_WINDOW_SECONDS = 86400
 
 
 def get_session_history(session_id: str) -> Dict[str, Any]:
@@ -227,7 +227,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'user_id': event_data['user_id'],
             'cart_value': event_data.get('cart_value', 0),
             'product_count': event_data.get('product_count', 0),
-            'product_quantities': event_data.get('product_quantities', {}),
+            'product_quantities': event_data.get('product_quantities', {}) if isinstance(event_data.get('product_quantities'), dict) else {},
             'shipping_option_selected': event_data.get('shipping_option_selected', 'standard'),
             'delivery_mode': event_data.get('delivery_mode', 'shipping'),
             'shipping_type': event_data.get('shipping_type', 'standard'),
@@ -247,7 +247,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'timestamp': datetime.fromtimestamp(float(item['timestamp']), tz=timezone.utc).isoformat(),
                     'cart_value': float(item.get('cart_value', 0)),
                     'product_count': int(item.get('product_count', 0)),
-                    'product_quantities': item.get('product_quantities', {}),
+                    'product_quantities': item.get('product_quantities', {}) if isinstance(item.get('product_quantities'), dict) else {},
                     'shipping_option_selected': item.get('shipping_option_selected', 'standard'),
                     'mouse_click_count': int(item.get('mouse_click_count', 0)),
                     'page': item.get('page', 'cart')

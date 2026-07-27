@@ -14,8 +14,6 @@ MODEL_FEATURE_COLS = [
     'total_clicks',
 ]
 
-CATEGORICAL_COLS = ['device']
-
 RETENTION_THRESHOLD = 0.7
 
 

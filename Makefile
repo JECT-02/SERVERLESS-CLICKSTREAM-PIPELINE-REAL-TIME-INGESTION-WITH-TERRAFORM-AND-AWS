@@ -1,8 +1,9 @@
-.PHONY: help store floci-up floci-down floci-status \
+.PHONY: help store floci-up floci-down floci-status check-floci \
         deploy deploy-aws plan plan-aws destroy destroy-aws tf-init tf-init-aws \
         lambda-package lambda-test lambda-lint \
-        ecs-build ecs-test ecs-run-local \
+        ecs-build ecs-push ecs-test ecs-run-local \
         train train-local upload-model upload-raw pipeline \
+        load-test generate-events \
         frontend-test frontend-install \
         test lint format clean install
 
@@ -22,6 +23,7 @@ help:
 	@echo "  make floci-up        - Inicia Floci en puerto 4566"
 	@echo "  make floci-down      - Detiene Floci"
 	@echo "  make floci-status    - Verifica estado de Floci"
+	@echo "  make check-floci     - Verifica que Floci responda (exit 1 si no)"
 	@echo ""
 	@echo "Infraestructura:"
 	@echo "  make deploy          - Despliega infraestructura local (terraform apply)"
@@ -40,6 +42,7 @@ help:
 	@echo ""
 	@echo "ECS Inference:"
 	@echo "  make ecs-build       - Construye imagen Docker ECS"
+	@echo "  make ecs-push        - Taggea y sube imagen a ECR local"
 	@echo "  make ecs-test        - Ejecuta tests ECS inference"
 	@echo "  make ecs-run-local   - Ejecuta servidor inference localmente (sin Docker)"
 	@echo ""
@@ -49,6 +52,10 @@ help:
 	@echo "  make upload-model    - Sube modelo local a S3"
 	@echo "  make upload-raw      - Sube raw data local a S3"
 	@echo "  make pipeline        - Flujo completo: S3 raw -> pipeline -> modelo -> S3"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make load-test       - Ejecuta prueba de carga (scripts/load_test.py)"
+	@echo "  make generate-events - Genera eventos de prueba (scripts/generate_events.py)"
 	@echo ""
 	@echo "Frontend:"
 	@echo "  make store           - Abre la tienda en el navegador"
@@ -70,7 +77,10 @@ floci-down:
 	floci stop
 
 floci-status:
-	curl -s http://localhost:4566/_localstack/health || echo "Floci no responde"
+	powershell -NoProfile -File scripts/floci-status.ps1
+
+check-floci:
+	powershell -NoProfile -File scripts/check-floci.ps1
 
 # Terraform Local
 tf-init:
@@ -79,8 +89,9 @@ tf-init:
 plan: tf-init
 	cd $(TERRAFORM_DIR) && terraform plan
 
-deploy: tf-init
+deploy: check-floci lambda-package ecs-build tf-init
 	cd $(TERRAFORM_DIR) && terraform apply -auto-approve
+	powershell -NoProfile -Command "aws ecs update-service --cluster clickstream-cluster --service clickstream-inference-service --force-new-deployment --endpoint-url http://localhost:4566 2>&1 | Out-Null; Start-Sleep -Seconds 2; docker ps --filter 'name=floci-ecs' --format '{{.Names}}' | ForEach-Object { docker stop $$_ 2>&1 | Out-Null }; Write-Host 'ECS reiniciado con nueva imagen'"
 
 destroy:
 	cd $(TERRAFORM_DIR) && terraform destroy -auto-approve
@@ -100,7 +111,7 @@ destroy-aws:
 
 # Lambda
 lambda-package:
-	cd $(LAMBDA_DIR) && pip install -r requirements.txt -t package/ && cd package && zip -r ../lambda_package.zip . && cd .. && rm -rf package
+	powershell -NoProfile -File scripts/build-lambda.ps1
 
 lambda-test:
 	cd $(LAMBDA_DIR) && python -m pytest tests/ -v
@@ -111,6 +122,9 @@ lambda-lint:
 # ECS Inference
 ecs-build:
 	docker build -t clickstream-inference:latest $(ECS_DIR)
+
+ecs-push:
+	powershell -NoProfile -Command "docker tag clickstream-inference:latest 000000000000.dkr.ecr.us-east-1.localhost:5100/clickstream-inference:latest; docker push 000000000000.dkr.ecr.us-east-1.localhost:5100/clickstream-inference:latest"
 
 ecs-test:
 	cd $(ECS_DIR) && python -m pytest tests/ -v
@@ -137,6 +151,12 @@ pipeline: upload-raw
 	python ml/training/train.py
 	python scripts/upload_model.py
 
+load-test:
+	python scripts/load_test.py
+
+generate-events:
+	python scripts/generate_events.py
+
 # Frontend
 store:
 	cmd /c start "" "$(FRONTEND_DIR)/index.html"
@@ -148,8 +168,7 @@ frontend-test:
 	cd $(FRONTEND_DIR) && npm test
 
 # Utils
-test:
-	python -m pytest tests/ -v
+test: lambda-test ecs-test
 
 lint:
 	ruff check . || flake8 .
@@ -158,13 +177,7 @@ format:
 	ruff format . || black .
 
 clean:
-	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-	find . -type f -name "*.pyc" -delete 2>/dev/null || true
-	find . -type f -name "*.pyo" -delete 2>/dev/null || true
-	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
-	rm -rf lambda/package lambda/lambda_package.zip 2>/dev/null || true
+	powershell -NoProfile -File scripts/clean.ps1
 
 install:
 	pip install -r requirements.txt

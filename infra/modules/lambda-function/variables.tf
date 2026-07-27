@@ -42,7 +42,3 @@ variable "source_code_hash" {
   default     = ""
 }
 
-variable "api_gateway_execution_arn" {
-  type        = string
-  default     = ""
-}

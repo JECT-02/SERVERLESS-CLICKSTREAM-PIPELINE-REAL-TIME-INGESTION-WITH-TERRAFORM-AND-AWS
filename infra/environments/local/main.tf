@@ -14,6 +14,7 @@ provider "aws" {
     logs          = var.floci_endpoint
     cloudformation = var.floci_endpoint
     ec2           = var.floci_endpoint
+    elbv2         = var.floci_endpoint
   }
   skip_credentials_validation = true
   skip_metadata_api_check     = true
@@ -88,8 +89,60 @@ module "ecs_task_definition" {
   cpu                 = var.ecs_cpu
   memory              = var.ecs_memory
   container_port      = var.ecs_container_port
-  env_vars            = var.ecs_env_vars
+  env_vars            = merge(var.ecs_env_vars, {
+    AWS_ENDPOINT_URL     = "http://host.docker.internal:4566"
+    AWS_ACCESS_KEY_ID    = "test"
+    AWS_SECRET_ACCESS_KEY = "test"
+    AWS_DEFAULT_REGION   = "us-east-1"
+  })
   task_execution_role = module.iam_roles.ecs_task_execution_role_arn
+}
+
+resource "aws_security_group" "alb" {
+  name        = "clickstream-alb-sg"
+  description = "Security group for clickstream ALB"
+  vpc_id      = module.vpc.vpc_id
+  tags        = local.common_tags
+}
+
+resource "aws_security_group_rule" "alb_ingress" {
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  cidr_blocks       = ["10.0.0.0/16"]
+  security_group_id = aws_security_group.alb.id
+}
+
+resource "aws_security_group_rule" "alb_egress" {
+  type              = "egress"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.alb.id
+}
+
+module "alb" {
+  source             = "../../modules/ecs-fargate/alb"
+  alb_name           = "clickstream-alb"
+  vpc_id             = module.vpc.vpc_id
+  subnet_ids         = module.vpc.public_subnet_ids
+  security_group_ids = [aws_security_group.alb.id]
+  target_group_name  = "clickstream-tg"
+  container_port     = var.ecs_container_port
+  tags               = local.common_tags
+}
+
+module "ecs_service" {
+  source               = "../../modules/ecs-fargate/service"
+  cluster_name         = module.ecs_cluster.cluster_name
+  service_name         = var.ecs_service_name
+  task_definition_arn  = module.ecs_task_definition.task_definition_arn
+  desired_count        = var.ecs_desired_count
+  alb_target_group_arn = module.alb.target_group_arn
+  subnet_ids           = module.vpc.public_subnet_ids
+  security_group_ids   = [module.vpc.ecs_tasks_security_group_id]
 }
 
 module "lambda_function" {
@@ -99,11 +152,12 @@ module "lambda_function" {
   runtime                   = var.lambda_runtime
   timeout                   = var.lambda_timeout
   memory_size               = var.lambda_memory
-  environment_variables     = var.lambda_env_vars
+  environment_variables     = merge(var.lambda_env_vars, {
+    ECS_ENDPOINT = "http://172.17.0.4:8080"
+  })
   role_arn                  = module.iam_roles.lambda_execution_role_arn
   source_code_filename      = var.lambda_source_code_filename
   source_code_hash          = local.lambda_source_code_hash
-  api_gateway_execution_arn = module.api_gateway.execution_arn
 }
 
 module "api_gateway" {
@@ -112,6 +166,14 @@ module "api_gateway" {
   lambda_function_arn = module.lambda_function.function_arn
   lambda_invoke_arn  = module.lambda_function.invoke_arn
   stage_name         = "prod"
+}
+
+resource "aws_lambda_permission" "api_gateway_invoke" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambda_function.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = module.api_gateway.execution_arn
 }
 
 resource "local_file" "frontend_config" {

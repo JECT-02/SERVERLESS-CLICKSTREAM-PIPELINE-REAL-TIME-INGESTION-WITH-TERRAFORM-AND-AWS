@@ -1,5 +1,6 @@
 import os
 import tempfile
+import uuid
 import joblib
 import boto3
 from botocore.config import Config
@@ -29,18 +30,18 @@ def download_model_from_s3():
         endpoint_url=AWS_ENDPOINT_URL,
         config=get_boto_config()
     )
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.pkl')
+    tmp_path = os.path.join(tempfile.gettempdir(), f"model_{uuid.uuid4().hex}.pkl")
     try:
-        s3.download_file(Bucket=S3_BUCKET, Key=MODEL_S3_KEY, Filename=tmp.name)
-        artifact = joblib.load(tmp.name)
+        s3.download_file(Bucket=S3_BUCKET, Key=MODEL_S3_KEY, Filename=tmp_path)
+        artifact = joblib.load(tmp_path)
         return artifact
     except ClientError as e:
         raise RuntimeError(
             f'Failed to download s3://{S3_BUCKET}/{MODEL_S3_KEY}: {e}'
         )
     finally:
-        tmp.close()
-        os.unlink(tmp.name)
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 
 def load_model():
