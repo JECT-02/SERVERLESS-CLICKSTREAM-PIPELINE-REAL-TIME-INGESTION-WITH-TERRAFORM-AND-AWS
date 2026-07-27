@@ -114,6 +114,7 @@ let pageLoadTime = Date.now();
 let currentPage = "catalog";
 let deliveryMode = "shipping";
 let shippingType = "standard";
+let shippingDiscount = 0;
 let selectedStore = tiendas[0];
 let retentionData = null;
 let heartbeatIntervalId = null;
@@ -203,7 +204,8 @@ function getShippingCost() {
   if (deliveryMode === "store") return 0;
   const totalItems = getTotalItems();
   const base = totalItems * 4;
-  return shippingType === "express" ? base * 3 : base;
+  const cost = shippingType === "express" ? base * 3 : base;
+  return Math.max(0, cost - shippingDiscount);
 }
 
 function getShippingDays() {
@@ -291,18 +293,14 @@ function sendHeartbeat() {
 
 function showRetention(data) {
   retentionData = data;
-  if (data.retention_type === "shipping_discount") {
-    document.getElementById("retentionTitle").textContent = "Envio gratis para ti!";
-    document.getElementById("retentionMessage").textContent = "No te vayas. Te ofrecemos envio gratuito en esta compra.";
-    document.getElementById("retentionContent").innerHTML = `<div class="bg-green-100 text-green-800 text-center py-3 rounded text-lg">Envio gratuito aplicado</div>`;
-  } else if (data.retention_type === "express_upgrade") {
-    document.getElementById("retentionTitle").textContent = "Upgrade a Express gratis!";
-    document.getElementById("retentionMessage").textContent = "Lleva tus productos en 1 dia sin costo adicional de envio express.";
-    document.getElementById("retentionContent").innerHTML = `<div class="bg-blue-100 text-blue-800 text-center py-3 rounded text-lg">Express sin recargo</div>`;
+  if (data.retention_type === "express_discount") {
+    document.getElementById("retentionTitle").textContent = "Express con descuento!";
+    document.getElementById("retentionMessage").textContent = "No te vayas. Lleva tu envio EXPRESS al precio de envio normal.";
+    document.getElementById("retentionContent").innerHTML = `<div class="bg-blue-100 text-blue-800 text-center py-3 rounded text-lg">Express al precio normal</div>`;
   } else {
-    document.getElementById("retentionTitle").textContent = "No te vayas!";
-    document.getElementById("retentionMessage").textContent = "Tenemos un cupon especial para ti.";
-    document.getElementById("retentionContent").innerHTML = `<div class="bg-orange-100 text-orange-800 text-center py-3 rounded text-2xl font-bold tracking-widest" id="couponCode">${data.coupon_code || "SAVE10"}</div>`;
+    document.getElementById("retentionTitle").textContent = "Envio gratis para ti!";
+    document.getElementById("retentionMessage").textContent = "No te vayas. Te ofrecemos envio GRATUITO en esta compra.";
+    document.getElementById("retentionContent").innerHTML = `<div class="bg-green-100 text-green-800 text-center py-3 rounded text-lg">Envio gratuito aplicado</div>`;
   }
   document.getElementById("retentionModal").classList.add("active");
 }
@@ -313,13 +311,17 @@ function closeRetention() {
 }
 
 function acceptRetention() {
-  if (retentionData && retentionData.retention_type === "shipping_discount") {
-    shippingType = "standard";
-    deliveryMode = "shipping";
+  if (retentionData && retentionData.retention_type === "express_discount") {
+    const totalItems = getTotalItems();
+    const base = totalItems * 4;
+    const expressCost = base * 3;
+    const standardCost = base;
+    shippingDiscount = expressCost - standardCost;
     renderCart();
-  } else if (retentionData && retentionData.retention_type === "express_upgrade") {
-    shippingType = "express";
-    deliveryMode = "shipping";
+  } else if (retentionData && retentionData.retention_type === "free_shipping") {
+    const totalItems = getTotalItems();
+    const base = totalItems * 4;
+    shippingDiscount = shippingType === "express" ? base * 3 : base;
     renderCart();
   }
   document.getElementById("retentionModal").classList.remove("active");
@@ -487,11 +489,13 @@ function renderCart() {
 
 function setDelivery(mode) {
   deliveryMode = mode;
+  shippingDiscount = 0;
   renderCart();
 }
 
 function setShipping(type) {
   shippingType = type;
+  shippingDiscount = 0;
   renderCart();
 }
 
@@ -558,6 +562,7 @@ function confirmCheckout() {
   carrito = [];
   deliveryMode = "shipping";
   shippingType = "standard";
+  shippingDiscount = 0;
   document.getElementById("cartSummary").textContent = "Carrito (0)";
   document.getElementById("pageContent").innerHTML = `<div class="text-center py-20"><p class="text-2xl text-green-600 font-bold mb-2">Compra exitosa!</p><p class="text-gray-500">Gracias por tu compra</p><button class="bg-blue-600 text-white px-4 py-2 rounded mt-4" onclick="goToCatalog()">Seguir comprando</button></div>`;
   stopHeartbeat();
@@ -582,6 +587,7 @@ function abandonCart(reason) {
   carrito = [];
   deliveryMode = "shipping";
   shippingType = "standard";
+  shippingDiscount = 0;
   document.getElementById("cartSummary").textContent = "Carrito (0)";
   closeAbandon();
   document.getElementById("pageContent").innerHTML = `<div class="text-center py-20 text-gray-500"><p class="text-xl mb-4">Carrito abandonado</p><p class="text-sm text-gray-400 mb-4">Motivo: ${reason}</p><button class="bg-blue-600 text-white px-4 py-2 rounded" onclick="goToCatalog()">Volver a tienda</button></div>`;

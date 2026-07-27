@@ -49,7 +49,6 @@ class PredictResponse(BaseModel):
     abandon_probability: float
     trigger_retention: bool
     retention_type: Optional[str] = None
-    coupon_code: Optional[str] = None
 
 
 class HealthResponse(BaseModel):

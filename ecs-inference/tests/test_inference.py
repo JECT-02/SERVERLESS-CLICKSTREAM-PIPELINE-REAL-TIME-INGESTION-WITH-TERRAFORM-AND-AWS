@@ -118,20 +118,14 @@ def test_map_payload_to_row_defaults():
     assert row['checkout_count'] == 0
 
 
-def test_select_retention_type_shipping_discount():
-    result = select_retention_type(0.85, {'delivery_mode': 'shipping', 'shipping_cost': 5, 'shipping_type': 'standard'})
-    assert result['retention_type'] == 'shipping_discount'
+def test_select_retention_type_free_shipping():
+    result = select_retention_type(0.85, {'shipping_type': 'standard'})
+    assert result['retention_type'] == 'free_shipping'
 
 
-def test_select_retention_type_express_upgrade():
-    result = select_retention_type(0.85, {'delivery_mode': 'shipping', 'shipping_cost': 0, 'shipping_type': 'standard'})
-    assert result['retention_type'] == 'express_upgrade'
-
-
-def test_select_retention_type_coupon():
-    result = select_retention_type(0.85, {'delivery_mode': 'store', 'shipping_cost': 0, 'shipping_type': 'express'})
-    assert result['retention_type'] == 'coupon'
-    assert result['coupon_code'] == 'SAVE10'
+def test_select_retention_type_express_discount():
+    result = select_retention_type(0.85, {'shipping_type': 'express'})
+    assert result['retention_type'] == 'express_discount'
 
 
 def test_run_inference_returns_structure(sample_payload, sample_model, sample_scaler, sample_encoders, sample_feature_cols):

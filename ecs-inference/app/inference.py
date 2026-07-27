@@ -85,25 +85,10 @@ def predict(model, X: np.ndarray) -> float:
 
 
 def select_retention_type(probability: float, payload: dict) -> dict:
-    shipping_cost = payload.get('shipping_cost', 0)
-    delivery_mode = payload.get('delivery_mode', 'shipping')
     shipping_type = payload.get('shipping_type', 'standard')
-
-    if delivery_mode == 'shipping' and shipping_cost > 0:
-        return {
-            'retention_type': 'shipping_discount',
-            'coupon_code': None,
-        }
-    elif shipping_type == 'standard':
-        return {
-            'retention_type': 'express_upgrade',
-            'coupon_code': None,
-        }
-    else:
-        return {
-            'retention_type': 'coupon',
-            'coupon_code': 'SAVE10',
-        }
+    if shipping_type == 'express':
+        return {'retention_type': 'express_discount'}
+    return {'retention_type': 'free_shipping'}
 
 
 def run_inference(payload: dict, model, scaler, encoders: dict, feature_cols: list) -> dict:
