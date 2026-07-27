@@ -159,7 +159,7 @@ generate-events:
 
 # Frontend
 store:
-	cmd /c start "" "$(FRONTEND_DIR)/index.html"
+	powershell -NoProfile -Command "Start-Process '$(FRONTEND_DIR)/index.html'"
 
 frontend-install:
 	cd $(FRONTEND_DIR) && npm install
