@@ -44,6 +44,22 @@ locals {
   lambda_source_code_hash = filebase64sha256(var.lambda_source_code_filename)
 }
 
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
+data "aws_subnet" "default" {
+  count = length(data.aws_subnets.default.ids)
+  id    = data.aws_subnets.default.ids[count.index]
+}
+
 module "s3_bucket" {
   source             = "../../modules/s3-bucket"
   bucket_name        = var.bucket_name
@@ -66,9 +82,29 @@ module "iam_roles" {
   ecs_cluster_arn      = ""
 }
 
-module "vpc" {
-  source = "../../modules/vpc"
-  tags   = local.common_tags
+resource "aws_security_group" "ecs_tasks" {
+  name        = var.ecs_sg_name
+  description = "Security group for ECS Fargate tasks"
+  vpc_id      = data.aws_vpc.default.id
+  tags        = local.common_tags
+}
+
+resource "aws_security_group_rule" "ecs_tasks_ingress" {
+  type              = "ingress"
+  from_port         = var.ecs_container_port
+  to_port           = var.ecs_container_port
+  protocol          = "tcp"
+  cidr_blocks       = [data.aws_vpc.default.cidr_block]
+  security_group_id = aws_security_group.ecs_tasks.id
+}
+
+resource "aws_security_group_rule" "ecs_tasks_egress" {
+  type              = "egress"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.ecs_tasks.id
 }
 
 module "ecs_cluster" {
@@ -85,7 +121,7 @@ module "ecs_task_definition" {
   source              = "../../modules/ecs-fargate/task-definition"
   family              = var.ecs_task_family
   container_name      = var.ecs_container_name
-  image               = var.ecs_image
+  image               = "localhost:5100/clickstream-inference:latest"
   cpu                 = var.ecs_cpu
   memory              = var.ecs_memory
   container_port      = var.ecs_container_port
@@ -101,7 +137,7 @@ module "ecs_task_definition" {
 resource "aws_security_group" "alb" {
   name        = "clickstream-alb-sg"
   description = "Security group for clickstream ALB"
-  vpc_id      = module.vpc.vpc_id
+  vpc_id      = data.aws_vpc.default.id
   tags        = local.common_tags
 }
 
@@ -126,8 +162,8 @@ resource "aws_security_group_rule" "alb_egress" {
 module "alb" {
   source             = "../../modules/ecs-fargate/alb"
   alb_name           = "clickstream-alb"
-  vpc_id             = module.vpc.vpc_id
-  subnet_ids         = module.vpc.public_subnet_ids
+  vpc_id             = data.aws_vpc.default.id
+  subnet_ids         = data.aws_subnets.default.ids
   security_group_ids = [aws_security_group.alb.id]
   target_group_name  = "clickstream-tg"
   container_port     = var.ecs_container_port
@@ -141,8 +177,8 @@ module "ecs_service" {
   task_definition_arn  = module.ecs_task_definition.task_definition_arn
   desired_count        = var.ecs_desired_count
   alb_target_group_arn = module.alb.target_group_arn
-  subnet_ids           = module.vpc.public_subnet_ids
-  security_group_ids   = [module.vpc.ecs_tasks_security_group_id]
+  subnet_ids           = data.aws_subnets.default.ids
+  security_group_ids   = [aws_security_group.ecs_tasks.id]
 }
 
 module "lambda_function" {
@@ -153,7 +189,7 @@ module "lambda_function" {
   timeout                   = var.lambda_timeout
   memory_size               = var.lambda_memory
   environment_variables     = merge(var.lambda_env_vars, {
-    ECS_ENDPOINT = "http://172.17.0.4:8080"
+    ECS_ENDPOINT = "http://${module.alb.alb_dns_name}:80"
   })
   role_arn                  = module.iam_roles.lambda_execution_role_arn
   source_code_filename      = var.lambda_source_code_filename
@@ -176,15 +212,21 @@ resource "aws_lambda_permission" "api_gateway_invoke" {
   source_arn    = module.api_gateway.execution_arn
 }
 
+resource "local_file" "api_id" {
+  filename = "${path.module}/../../../frontend/.api_id"
+  content  = module.api_gateway.rest_api_id
+}
+
 resource "local_file" "frontend_config" {
   filename = "${path.module}/../../../frontend/config.js"
   content  = <<-EOF
 window.CLICKSTREAM_CONFIG = {
-  apiUrl: "http://localhost:4566/restapis/${module.api_gateway.rest_api_id}/prod/_user_request_/events",
+  apiUrl: "http://localhost:8000/api/events",
   trackedPages: ["cart", "checkout"],
   heartbeatIntervalMs: 250
 };
 EOF
+  depends_on = [local_file.api_id]
 }
 
 output "api_gateway_url" {
@@ -204,13 +246,13 @@ output "lambda_function_name" {
 }
 
 output "vpc_id" {
-  value = module.vpc.vpc_id
+  value = data.aws_vpc.default.id
 }
 
 output "public_subnet_ids" {
-  value = module.vpc.public_subnet_ids
+  value = data.aws_subnets.default.ids
 }
 
 output "ecs_tasks_security_group_id" {
-  value = module.vpc.ecs_tasks_security_group_id
+  value = aws_security_group.ecs_tasks.id
 }

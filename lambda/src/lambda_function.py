@@ -19,6 +19,8 @@ AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
 AWS_ENDPOINT_URL = os.environ.get('AWS_ENDPOINT_URL', 'http://localhost:4566')
 ECS_ENDPOINT = os.environ.get('ECS_ENDPOINT', 'http://localhost:8080')
 
+MIN_HEARTBEAT_FOR_INFERENCE = int(os.environ.get('MIN_HEARTBEAT_FOR_INFERENCE', '10'))
+
 DEFAULT_BOTO_CONFIG = Config(
     region_name=AWS_REGION,
     retries={'max_attempts': 3, 'mode': 'standard'},
@@ -55,7 +57,9 @@ EVENT_TYPE_SCHEMAS = {
     'start_checkout': REQUIRED_FIELDS + ['cart_value', 'product_count', 'product_quantities', 'shipping_option_selected', 'mouse_click_count'],
     'purchase': REQUIRED_FIELDS + ['cart_value', 'product_count', 'product_quantities', 'shipping_option_selected', 'mouse_click_count', 'payment_method'],
     'abandon': REQUIRED_FIELDS + ['cart_value', 'product_count', 'product_quantities', 'shipping_option_selected', 'mouse_click_count', 'abandon_reason'],
-    'view_product': REQUIRED_FIELDS + ['product_id', 'category', 'price']
+    'view_product': REQUIRED_FIELDS + ['product_id', 'category', 'price'],
+    'accept_offer': REQUIRED_FIELDS + ['retention_type'],
+    'reject_offer': REQUIRED_FIELDS + ['retention_type']
 }
 
 
@@ -135,11 +139,11 @@ DYNAMODB_FIELDS = [
     'abandon_reason', 'payment_method', 'product_id', 'category', 'price',
     'cart_value', 'product_count', 'product_quantities',
     'shipping_option_selected', 'mouse_click_count', 'mouse_x', 'mouse_y',
-    'page', 'user_id', 'event_type'
+    'page', 'user_id', 'event_type', 'offer_state', 'retention_type'
 ]
 
 
-def store_session_state(event_data: Dict[str, Any], s3_key: str) -> None:
+def store_session_state(event_data: Dict[str, Any], s3_key: str, extra_state: Optional[Dict[str, Any]] = None) -> None:
     dt = datetime.fromisoformat(event_data['timestamp'].replace('Z', '+00:00'))
     item = {
         'session_id': event_data['session_id'],
@@ -157,27 +161,31 @@ def store_session_state(event_data: Dict[str, Any], s3_key: str) -> None:
             elif isinstance(val, (list, tuple)):
                 val = to_dynamo_value(val)
             item[field] = val
+    if extra_state:
+        item.update(extra_state)
     table.put_item(Item=item)
 
 
-SESSION_WINDOW_SECONDS = 86400
-
-
 def get_session_history(session_id: str) -> Dict[str, Any]:
-    now_ts = datetime.now(timezone.utc).timestamp()
-    cutoff = Decimal(str(now_ts - SESSION_WINDOW_SECONDS))
     response = table.query(
-        KeyConditionExpression='session_id = :sid AND #ts >= :cutoff',
-        ExpressionAttributeNames={'#ts': 'timestamp'},
-        ExpressionAttributeValues={
-            ':sid': session_id,
-            ':cutoff': cutoff,
-        },
+        KeyConditionExpression='session_id = :sid',
+        ExpressionAttributeValues={':sid': session_id},
         ScanIndexForward=False,
+        Limit=150,
     )
+    items = response.get('Items', [])
+    heartbeat_count = sum(1 for it in items if it.get('event_type') == 'heartbeat')
+    offer_state = None
+    for it in items:
+        os_val = it.get('offer_state')
+        if os_val in ('shown', 'accepted', 'rejected'):
+            offer_state = os_val
+            break
     return {
-        'items': response.get('Items', []),
-        'session_id': session_id
+        'items': items,
+        'session_id': session_id,
+        'heartbeat_count': heartbeat_count,
+        'offer_state': offer_state
     }
 
 
@@ -196,10 +204,21 @@ def invoke_inference(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {'abandon_probability': 0.0, 'trigger_retention': False}
 
 
+CORS_HEADERS = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'OPTIONS,POST',
+    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+}
+
+
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    if event.get('httpMethod') == 'OPTIONS':
+        return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': json.dumps({'status': 'ok'})}
+
     try:
         if 'body' not in event:
-            return {'statusCode': 400, 'body': json.dumps({'error': 'Missing body'})}
+            return {'statusCode': 400, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Missing body'})}
 
         body = event['body']
         if isinstance(body, str):
@@ -211,16 +230,50 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not valid:
             return {
                 'statusCode': 400,
-                'headers': {'Content-Type': 'application/json'},
+                'headers': CORS_HEADERS,
                 'body': json.dumps({'error': error})
             }
 
         s3_key = generate_s3_key(event_data['event_type'], event_data['session_id'], event_data['timestamp'])
 
         store_event_s3(event_data, s3_key)
+
+        if event_data['event_type'] in ('accept_offer', 'reject_offer'):
+            extra_state = {'offer_state': event_data['event_type'] == 'accept_offer' and 'accepted' or 'rejected'}
+            store_session_state(event_data, s3_key, extra_state)
+            return {
+                'statusCode': 200,
+                'headers': CORS_HEADERS,
+                'body': json.dumps({'status': 'ok', 'offer_state': extra_state['offer_state']})
+            }
+
         store_session_state(event_data, s3_key)
 
         session_history = get_session_history(event_data['session_id'])
+
+        if session_history['heartbeat_count'] < MIN_HEARTBEAT_FOR_INFERENCE:
+            inference_response = {'abandon_probability': 0.0, 'trigger_retention': False}
+            store_enriched_event_s3(
+                event_data, None, inference_response,
+                [], s3_key
+            )
+            return {
+                'statusCode': 200,
+                'headers': CORS_HEADERS,
+                'body': json.dumps(inference_response)
+            }
+
+        if session_history['offer_state'] is not None:
+            inference_response = {'abandon_probability': 0.0, 'trigger_retention': False}
+            store_enriched_event_s3(
+                event_data, None, inference_response,
+                [], s3_key
+            )
+            return {
+                'statusCode': 200,
+                'headers': CORS_HEADERS,
+                'body': json.dumps(inference_response)
+            }
 
         session_data = {
             'session_id': event_data['session_id'],
@@ -260,6 +313,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             payload = prepare_inference_payload(session_data, features)
             inference_response = invoke_inference(payload)
 
+        if inference_response.get('trigger_retention'):
+            store_session_state(event_data, s3_key, {'offer_state': 'shown'})
+
         store_enriched_event_s3(
             event_data, features, inference_response,
             session_data['heartbeats'], s3_key
@@ -267,14 +323,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         return {
             'statusCode': 200,
-            'headers': {'Content-Type': 'application/json'},
+            'headers': CORS_HEADERS,
             'body': json.dumps(inference_response)
         }
 
     except json.JSONDecodeError:
         return {
             'statusCode': 400,
-            'headers': {'Content-Type': 'application/json'},
+            'headers': CORS_HEADERS,
             'body': json.dumps({'error': 'Invalid JSON'})
         }
     except Exception as e:
@@ -284,6 +340,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         traceback.print_exc()
         return {
             'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
+            'headers': CORS_HEADERS,
             'body': json.dumps({'error': str(e)})
         }

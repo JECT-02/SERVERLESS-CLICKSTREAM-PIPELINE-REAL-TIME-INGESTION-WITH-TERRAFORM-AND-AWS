@@ -833,7 +833,7 @@ def main():
     total_events = 0
     total_abandons = 0
 
-    print(f"Generando {SESSION_COUNT} sesiones (max {MAX_SESSION_SECONDS}s c/u)...")
+    print(f"Generando {SESSION_COUNT} sesiones (max {MAX_SESSION_SECONDS}s c/u)")
     start_time = time.time()
 
     with open(ndjson_path, 'w', encoding='utf-8') as ndjson_f:

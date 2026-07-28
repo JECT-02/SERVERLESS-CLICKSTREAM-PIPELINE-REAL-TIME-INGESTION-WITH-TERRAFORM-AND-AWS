@@ -1,109 +1,109 @@
 {
   "session_count": 5000,
-  "total_events": 1578009,
-  "avg_events_per_session": 315.6,
-  "avg_heartbeats_per_session": 308.6,
-  "abandon_count": 3476,
-  "purchase_count": 1524,
-  "abandon_rate_pct": 69.52,
+  "total_events": 1579504,
+  "avg_events_per_session": 315.9,
+  "avg_heartbeats_per_session": 308.9,
+  "abandon_count": 3469,
+  "purchase_count": 1531,
+  "abandon_rate_pct": 69.38,
   "abandon_reason_distribution": {
-    "complex_checkout": 618,
-    "just_browsing": 275,
-    "extra_costs": 1165,
-    "browsing": 603,
-    "payment_security": 329,
-    "slow_delivery": 486
+    "extra_costs": 1052,
+    "slow_delivery": 504,
+    "complex_checkout": 653,
+    "payment_security": 354,
+    "browsing": 600,
+    "just_browsing": 306
   },
   "feature_stats": {
     "event_count": {
-      "mean": 315.6,
-      "std": 60.46,
-      "min": 177.0,
-      "max": 455.0
+      "mean": 315.9,
+      "std": 61.73,
+      "min": 175.0,
+      "max": 456.0
     },
     "abandoned": {
-      "mean": 0.7,
+      "mean": 0.69,
       "std": 0.46,
       "min": 0.0,
       "max": 1.0
     },
     "has_checkout": {
-      "mean": 0.76,
+      "mean": 0.75,
       "std": 0.43,
       "min": 0.0,
       "max": 1.0
     },
     "velocity_avg": {
-      "mean": 1093.27,
-      "std": 213.63,
-      "min": 522.4,
-      "max": 1551.89
+      "mean": 1090.03,
+      "std": 216.17,
+      "min": 506.94,
+      "max": 1602.37
     },
     "velocity_max": {
-      "mean": 5987.13,
-      "std": 847.45,
-      "min": 3646.83,
-      "max": 9709.09
+      "mean": 5977.87,
+      "std": 848.72,
+      "min": 3574.56,
+      "max": 9837.42
     },
     "velocity_std": {
-      "mean": 1065.37,
-      "std": 92.2,
-      "min": 757.73,
-      "max": 1434.9
+      "mean": 1063.39,
+      "std": 92.21,
+      "min": 768.17,
+      "max": 1468.08
     },
     "acceleration_avg": {
-      "mean": 937.84,
-      "std": 253.62,
-      "min": 190.23,
-      "max": 1850.8
+      "mean": 935.72,
+      "std": 252.1,
+      "min": 190.41,
+      "max": 1847.31
     },
     "acceleration_max": {
-      "mean": 44743.78,
-      "std": 10087.63,
-      "min": 18315.96,
-      "max": 92702.18
+      "mean": 44600.13,
+      "std": 10275.17,
+      "min": 16032.65,
+      "max": 93509.81
     },
     "idle_total_ms": {
-      "mean": 1906.02,
-      "std": 1677.14,
+      "mean": 1903.45,
+      "std": 1673.36,
       "min": 0.0,
-      "max": 8978.0
+      "max": 9010.0
     },
     "distance_total": {
-      "mean": 77150.57,
-      "std": 21946.88,
-      "min": 24135.03,
-      "max": 137743.26
+      "mean": 77046.71,
+      "std": 22468.05,
+      "min": 24396.37,
+      "max": 134679.98
     },
     "exit_intent_count": {
-      "mean": 4.7,
-      "std": 4.77,
+      "mean": 4.73,
+      "std": 4.82,
       "min": 0.0,
-      "max": 26.0
+      "max": 25.0
     },
     "dwell_total_ms": {
-      "mean": 269.79,
-      "std": 346.92,
+      "mean": 264.53,
+      "std": 344.51,
       "min": 0.0,
-      "max": 2436.0
+      "max": 2555.0
     },
     "dwell_segments": {
-      "mean": 1.02,
-      "std": 1.23,
+      "mean": 1.01,
+      "std": 1.24,
       "min": 0.0,
-      "max": 8.0
+      "max": 9.0
     },
     "click_frequency": {
-      "mean": 31.25,
-      "std": 18.56,
-      "min": 2.19,
-      "max": 114.97
+      "mean": 31.55,
+      "std": 18.84,
+      "min": 3.75,
+      "max": 119.42
     },
     "session_duration_s": {
-      "mean": 89.79,
-      "std": 16.19,
-      "min": 60.27,
-      "max": 122.19
+      "mean": 89.9,
+      "std": 16.43,
+      "min": 60.5,
+      "max": 122.21
     },
     "cart_delta": {
       "mean": 0.0,
@@ -112,22 +112,22 @@
       "max": 0.0
     },
     "shipping_switches": {
-      "mean": 3.62,
-      "std": 4.11,
+      "mean": 3.61,
+      "std": 4.12,
       "min": 0.0,
-      "max": 24.0
+      "max": 22.0
     },
     "page_regression_count": {
-      "mean": 0.29,
-      "std": 0.53,
+      "mean": 0.28,
+      "std": 0.52,
       "min": 0.0,
       "max": 2.0
     },
     "payment_hesitation_ms": {
-      "mean": 35149.27,
-      "std": 24032.07,
+      "mean": 35134.89,
+      "std": 24275.04,
       "min": 0.0,
-      "max": 93644.0
+      "max": 94647.0
     },
     "payment_method_switches": {
       "mean": 0.0,
@@ -142,6 +142,6 @@
       "max": 4999.0
     }
   },
-  "elapsed_seconds": 64.0,
-  "generation_rate": 78.1
+  "elapsed_seconds": 78.9,
+  "generation_rate": 63.4
 }

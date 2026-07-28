@@ -5,7 +5,8 @@
         train train-local upload-model upload-raw pipeline \
         load-test generate-events \
         frontend-test frontend-install \
-        test lint format clean install
+        full-deploy \
+        test lint format clean deep-clean install clean-data
 
 # Variables
 TERRAFORM_DIR = infra/environments/local
@@ -26,11 +27,11 @@ help:
 	@echo "  make check-floci     - Verifica que Floci responda (exit 1 si no)"
 	@echo ""
 	@echo "Infraestructura:"
-	@echo "  make deploy          - Despliega infraestructura local (terraform apply)"
+	@echo "  make deploy          - Pipeline completo: despliega infra, uploads, procesa, entrena modelo, uploads"
 	@echo "  make deploy-aws      - Despliega infraestructura en AWS real"
 	@echo "  make plan            - Muestra plan terraform local"
 	@echo "  make plan-aws        - Muestra plan terraform AWS"
-	@echo "  make destroy         - Destruye infraestructura local"
+	@echo "  make destroy         - Destruye infraestructura local (vacia S3, limpia estado corrupto)"
 	@echo "  make destroy-aws     - Destruye infraestructura AWS"
 	@echo "  make tf-init         - Inicializa Terraform (local)"
 	@echo "  make tf-init-aws     - Inicializa Terraform (AWS)"
@@ -48,7 +49,7 @@ help:
 	@echo ""
 	@echo "ML Training:"
 	@echo "  make generate        - Genera datos sinteticos (NDJSON)"
-	@echo "  make train           - Entrena modelo y sube a S3"
+	@echo "  make train           - Procesa con Polars y entrena modelo"
 	@echo "  make train-local     - Entrena modelo localmente (sin S3)"
 	@echo "  make upload-model    - Sube modelo local a S3"
 	@echo "  make pipeline        - Flujo completo: generate -> polars -> train -> upload"
@@ -67,6 +68,7 @@ help:
 	@echo "  make lint            - Lint todo el proyecto"
 	@echo "  make format          - Formatea codigo (black/ruff)"
 	@echo "  make clean           - Limpia artefactos build"
+	@echo "  make deep-clean      - Destroy + clean + elimina estado terraform corrupto"
 	@echo "  make install         - Instala dependencias Python"
 
 # Floci
@@ -91,10 +93,16 @@ plan: tf-init
 
 deploy: check-floci lambda-package ecs-build tf-init
 	cd $(TERRAFORM_DIR) && terraform apply -auto-approve
+	$(MAKE) ecs-push
+	python scripts/upload_raw.py
+	python batch/polars_process.py
+	python ml/training/train.py
+	python scripts/upload_model.py
 	powershell -NoProfile -Command "aws ecs update-service --cluster clickstream-cluster --service clickstream-inference-service --force-new-deployment --endpoint-url http://localhost:4566 2>&1 | Out-Null; Start-Sleep -Seconds 2; docker ps --filter 'name=floci-ecs' --format '{{.Names}}' | ForEach-Object { docker stop $$_ 2>&1 | Out-Null }; Write-Host 'ECS reiniciado con nueva imagen'"
+	powershell -NoProfile -File scripts/set-api-id.ps1
 
 destroy:
-	cd $(TERRAFORM_DIR) && terraform destroy -auto-approve
+	powershell -NoProfile -File scripts/destroy.ps1
 
 # Terraform AWS
 tf-init-aws:
@@ -124,7 +132,7 @@ ecs-build:
 	docker build -t clickstream-inference:latest $(ECS_DIR)
 
 ecs-push:
-	powershell -NoProfile -Command "docker tag clickstream-inference:latest 000000000000.dkr.ecr.us-east-1.localhost:5100/clickstream-inference:latest; docker push 000000000000.dkr.ecr.us-east-1.localhost:5100/clickstream-inference:latest"
+	powershell -NoProfile -File scripts/ecs-push.ps1
 
 ecs-test:
 	cd $(ECS_DIR) && python -m pytest tests/ -v
@@ -142,11 +150,12 @@ polars-process:
 	python batch/polars_process.py
 
 # ML Training
-train: generate polars-process
-	cd $(ML_DIR) && python train.py
+train:
+	python batch/polars_process.py
+	python ml/training/train.py
 
 train-local:
-	cd $(ML_DIR) && python train.py --local
+	python ml/training/train.py --local
 
 upload-raw:
 	python scripts/upload_raw.py
@@ -154,8 +163,9 @@ upload-raw:
 upload-model:
 	python scripts/upload_model.py
 
-pipeline: clean-data generate polars-process
-	cd $(ML_DIR) && python train.py
+pipeline:
+	python batch/polars_process.py
+	python ml/training/train.py
 	python scripts/upload_model.py
 
 load-test:
@@ -166,7 +176,9 @@ generate-events:
 
 # Frontend
 store:
-	powershell -NoProfile -Command "Start-Process '$(FRONTEND_DIR)/index.html'"
+	@echo "Abriendo http://localhost:8000 ..."
+	powershell -NoProfile -Command "Start-Process 'http://localhost:8000' -ErrorAction SilentlyContinue"
+	python frontend/server.py
 
 frontend-install:
 	cd $(FRONTEND_DIR) && npm install
@@ -184,10 +196,13 @@ format:
 	ruff format . || black .
 
 clean-data:
-	powershell -NoProfile -Command "Remove-Item -Recurse -Force data/raw, data/processed, data/metadata -ErrorAction SilentlyContinue; Write-Host 'Data cleaned'"
+	powershell -NoProfile -Command "Remove-Item -Recurse -Force data/processed, data/models, data/metadata, data/enriched -ErrorAction SilentlyContinue; Remove-Item -Force frontend/.api_id -ErrorAction SilentlyContinue; Write-Host 'Data artifacts cleaned (raw data preserved)'"
 
 clean: clean-data
 	powershell -NoProfile -File scripts/clean.ps1
+
+deep-clean: destroy clean
+	powershell -NoProfile -Command "Get-ChildItem -Recurse -Directory -Filter '.terraform' | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue; Get-ChildItem -Recurse -Filter 'terraform.tfstate*' | Remove-Item -Force -ErrorAction SilentlyContinue; Get-ChildItem -Recurse -Filter '.terraform.lock.hcl' | Remove-Item -Force -ErrorAction SilentlyContinue; Write-Host 'Deep clean complete - all terraform state removed'"
 
 install:
 	pip install -r requirements.txt

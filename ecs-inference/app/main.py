@@ -16,7 +16,7 @@ MODEL_S3_KEY = os.environ.get('MODEL_S3_KEY', 'models/modelo_propension.pkl')
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info('Loading model from S3...')
+    logger.info('Loading model from S3')
     try:
         load_model()
         logger.info('Model loaded successfully')

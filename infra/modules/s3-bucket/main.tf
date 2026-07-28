@@ -1,6 +1,7 @@
 resource "aws_s3_bucket" "clickstream" {
-  bucket = var.bucket_name
-  tags   = var.tags
+  bucket        = var.bucket_name
+  force_destroy = true
+  tags          = var.tags
 }
 
 resource "aws_s3_bucket_versioning" "clickstream" {

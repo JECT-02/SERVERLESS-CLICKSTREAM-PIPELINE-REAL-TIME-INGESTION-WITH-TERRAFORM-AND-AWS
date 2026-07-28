@@ -138,3 +138,8 @@ variable "ecs_desired_count" {
   type        = number
   default     = 1
 }
+
+variable "ecs_sg_name" {
+  type        = string
+  default     = "clickstream-ecs-tasks-sg"
+}

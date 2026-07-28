@@ -4,10 +4,10 @@
   "f1_score": 1.0,
   "auc_roc": 1.0,
   "auc_pr": 1.0,
-  "true_negatives": 305,
+  "true_negatives": 306,
   "false_positives": 0,
   "false_negatives": 0,
-  "true_positives": 695,
+  "true_positives": 694,
   "specificity": 1.0,
   "train_auc_roc": 1.0,
   "train_auc_pr": 1.0,
@@ -45,9 +45,9 @@
   "n_train": 4000,
   "n_test": 1000,
   "class_distribution": {
-    "train_neg": 1219,
-    "train_pos": 2781,
-    "test_neg": 305,
-    "test_pos": 695
+    "train_neg": 1225,
+    "train_pos": 2775,
+    "test_neg": 306,
+    "test_pos": 694
   }
 }

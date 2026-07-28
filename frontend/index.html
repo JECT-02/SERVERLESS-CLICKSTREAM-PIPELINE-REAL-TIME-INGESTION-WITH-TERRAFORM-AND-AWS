@@ -124,6 +124,7 @@ let mouseX = 0;
 let mouseY = 0;
 
 function shouldTrack() {
+  if (document.hidden) return false;
   if (!TRACKED_PAGES.has(currentPage)) return false;
   if (currentPage === "cart" && carrito.length === 0) return false;
   if (currentPage === "checkout" && carrito.length === 0) return false;
@@ -229,6 +230,9 @@ function makeEvent(eventType, extra = {}) {
       payload.product_count = carrito.length;
       payload.product_quantities = getProductQuantities();
       payload.shipping_option_selected = deliveryMode === "store" ? "store" : shippingType;
+      payload.delivery_mode = deliveryMode;
+      payload.shipping_type = shippingType;
+      payload.shipping_cost = getShippingCost();
       payload.mouse_x = mouseX;
       payload.mouse_y = mouseY;
       break;
@@ -281,6 +285,10 @@ function makeEvent(eventType, extra = {}) {
       payload.category = extra.category;
       payload.price = extra.price;
       break;
+    case "accept_offer":
+    case "reject_offer":
+      payload.retention_type = extra.retention_type;
+      break;
   }
 
   return payload;
@@ -306,11 +314,14 @@ function showRetention(data) {
 }
 
 function closeRetention() {
+  const rt = retentionData ? retentionData.retention_type : "unknown";
   document.getElementById("retentionModal").classList.remove("active");
+  sendEvent(makeEvent("reject_offer", { retention_type: rt }));
   retentionData = null;
 }
 
 function acceptRetention() {
+  const rt = retentionData ? retentionData.retention_type : "unknown";
   if (retentionData && retentionData.retention_type === "express_discount") {
     const totalItems = getTotalItems();
     const base = totalItems * 4;
@@ -325,6 +336,7 @@ function acceptRetention() {
     renderCart();
   }
   document.getElementById("retentionModal").classList.remove("active");
+  sendEvent(makeEvent("accept_offer", { retention_type: rt }));
   retentionData = null;
 }
 
@@ -605,6 +617,9 @@ window.addEventListener("beforeunload", () => {
 
 document.addEventListener("click", () => { mouseClickCount++; });
 document.addEventListener("mousemove", (e) => { mouseX = e.clientX; mouseY = e.clientY; });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { stopHeartbeat(); } else { startHeartbeat(); }
+});
 
 renderCatalogo();
 </script>
